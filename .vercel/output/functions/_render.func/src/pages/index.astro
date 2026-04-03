@@ -1,0 +1,60 @@
+---
+/**
+ * DASHBOARD PRINCIPAL (Selector de Vistas)
+ * Esta es la página de aterrizaje después del login. Su función es determinar
+ * qué dashboard específico debe renderizarse según el rol del usuario.
+ */
+import Layout from '../layouts/Layout.astro';
+import { ROLES } from '../functions/checkRole';
+
+// Importación de los componentes de dashboard especializados por rol
+import AdminDashboard from '../components/Dashboard/AdminDashboard.astro';
+import DoctorDashboard from '../components/Dashboard/DoctorDashboard.astro';
+import NutritionistDashboard from '../components/Dashboard/NutritionistDashboard.astro';
+import CoachDashboard from '../components/Dashboard/CoachDashboard.astro';
+import StudentDashboard from '../components/Dashboard/StudentDashboard.astro';
+import StaffDashboard from '../components/Dashboard/StaffDashboard.astro';
+
+// Obtenemos el usuario inyectado por el middleware
+const user = Astro.locals.user;
+
+// REDIRECCIONES TEMPRANAS:
+// Ciertos roles no tienen un "Dashboard de Resumen" y aterrizan directamente en sus módulos de trabajo.
+if (user?.roleId === ROLES.STAFF) {
+  // El Staff se enfoca en Inventario y Gestión de Medicamentos
+  return Astro.redirect('/medications');
+}
+if (user?.roleId === ROLES.ESTUDIANTE) {
+  // El Estudiante aterriza directamente en su propia información personal
+  return Astro.redirect('/mi-perfil');
+}
+---
+
+<Layout title="Dashboard Principal">
+  {/* Renderizado condicional del componente de Dashboard correspondiente */}
+  {user?.roleId === ROLES.ADMINISTRADOR || user?.roleId === ROLES.JEFE_MEDICO ? (
+    // Vista para Administradores y Jefes Médicos (Estadísticas Globales)
+    <AdminDashboard user={user} />
+  ) : user?.roleId === ROLES.DOCTOR ? (
+    // Vista para Doctores (Citas del día y Alertas)
+    <DoctorDashboard user={user} />
+  ) : user?.roleId === ROLES.NUTRIOLOGO ? (
+    // Vista para Nutriólogos (Planes activos y seguimientos)
+    <NutritionistDashboard user={user} />
+  ) : user?.roleId === ROLES.ENTRENADOR ? (
+    // Vista para Entrenadores (Estado físico de sus atletas asignados)
+    <CoachDashboard user={user} />
+  ) : user?.roleId === ROLES.ESTUDIANTE ? (
+    // Vista para Estudiantes (Dashboard personal - backup si falla la redirección)
+    <StudentDashboard user={user} />
+  ) : user?.roleId === ROLES.STAFF ? (
+    // Vista para Staff (Inventario - backup si falla la redirección)
+    <StaffDashboard user={user} />
+  ) : (
+    // Fallback de seguridad por si el rol no está mapeado correctamente
+    <div class="text-center py-20 text-slate-500 font-semibold">
+      <p>⚠️ Rol no reconocido.</p>
+      <p class="text-sm font-normal">Contacta al administrador del sistema para verificar tus permisos.</p>
+    </div>
+  )}
+</Layout>

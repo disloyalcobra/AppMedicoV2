@@ -1,0 +1,42 @@
+---
+/**
+ * PÁGINA: AGENDAR CITA
+ * Esta página es un contenedor para el AppointmentForm.
+ * Maneja la navegación superior (breadcrumbs) adaptativa según el rol de usuario.
+ */
+import Layout from '../../layouts/Layout.astro';
+import AppointmentForm from '../../components/Appointment/AppointmentForm.astro';
+import { ROLES, checkRole } from '../../functions/checkRole';
+
+// 1. SEGURIDAD: Validamos que el usuario tenga permiso para agendar.
+const user = Astro.locals.user;
+if (!checkRole(user, [ROLES.DOCTOR, ROLES.JEFE_MEDICO, ROLES.STAFF, ROLES.ADMINISTRADOR, ROLES.NUTRIOLOGO, ROLES.ESTUDIANTE])) {
+  return Astro.redirect('/403');
+}
+---
+
+<Layout title="Agendar Cita">
+  <div class="mb-8">
+    {/* BREADCRUMBS DINÁMICOS:
+        - Estudiantes vuelven a su propio expediente.
+        - Médicos/Staff vuelven a la agenda global.
+    */}
+    <div class="flex items-center gap-3 text-sm font-semibold text-slate-500 mb-2">
+      {user?.roleId === ROLES.ESTUDIANTE ? (
+        <a href={`/patients/${user.userId}`} class="hover:text-teal-600 transition-colors">Mi Expediente</a>
+      ) : (
+        <a href="/appointments" class="hover:text-teal-600 transition-colors">Agenda</a>
+      )}
+      <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m9 18 6-6-6-6"/></svg>
+      <span class="text-teal-700 font-bold">Nueva Cita</span>
+    </div>
+    
+    <h1 class="text-3xl font-bold text-slate-800 tracking-tight">Agendar Consulta</h1>
+    <p class="text-slate-500 mt-1">Selecciona la fecha, hora y el especialista deseado.</p>
+  </div>
+
+  <div class="max-w-4xl">
+    {/* El componente Formulario encapsula la lógica de POST y base de datos */}
+    <AppointmentForm />
+  </div>
+</Layout>

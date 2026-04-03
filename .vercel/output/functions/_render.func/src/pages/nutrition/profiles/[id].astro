@@ -1,0 +1,172 @@
+---
+import Layout from '../../../layouts/Layout.astro';
+import { ROLES, checkRole } from '../../../functions/checkRole';
+import { db } from '../../../turso';
+
+const user = Astro.locals.user;
+if (!checkRole(user, [ROLES.NUTRIOLOGO, ROLES.DOCTOR, ROLES.JEFE_MEDICO, ROLES.ADMINISTRADOR, ROLES.ENTRENADOR])) {
+  return Astro.redirect('/403');
+}
+
+const { id } = Astro.params;
+
+// Fetch Profile and Patient combined
+const res = await db.execute({
+  sql: `SELECT np.*, p.isAthlete, u.firstName, u.lastName, p.dateOfBirth, p.patientId
+        FROM NutritionalProfiles np
+        JOIN Patients p ON np.patientId = p.patientId
+        JOIN Users u ON p.patientId = u.userId
+        WHERE np.profileId = ?`,
+  args: [String(id)]
+});
+
+if (res.rows.length === 0) {
+  return Astro.redirect('/404');
+}
+
+const profile = res.rows[0];
+const age = Math.abs(new Date(Date.now() - new Date(profile.dateOfBirth as string).getTime()).getUTCFullYear() - 1970);
+
+// Fetch active plan if any
+const planRes = await db.execute({
+    sql: `SELECT planId, patientAccepted FROM NutritionalPlans WHERE patientId = ? ORDER BY creationDate DESC LIMIT 1`,
+    args: [profile.patientId]
+});
+const activePlan = planRes.rows[0];
+
+---
+
+<Layout title={`Perfil Nutricional: ${profile.firstName} ${profile.lastName}`}>
+  <div class="mb-6 flex justify-between items-end">
+    <div>
+      <a href="/nutrition/profiles" class="text-teal-600 hover:text-teal-700 text-sm font-semibold flex items-center gap-1 mb-2">
+        <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m15 18-6-6 6-6"/></svg>
+        Volver a Perfiles
+      </a>
+      <div class="flex items-center gap-4">
+        <h1 class="text-3xl font-bold text-slate-800 tracking-tight">Evaluación Inicial</h1>
+        <span class={`px-3 py-1 rounded-full text-xs font-bold uppercase tracking-wider border ${
+            profile.metabolicRisk === 'Alto' ? 'bg-rose-50 text-rose-700 border-rose-200' :
+            profile.metabolicRisk === 'Moderado' ? 'bg-amber-50 text-amber-700 border-amber-200' :
+            'bg-emerald-50 text-emerald-700 border-emerald-200'
+        }`}>
+            Riesgo {profile.metabolicRisk}
+        </span>
+      </div>
+    </div>
+    
+    <div class="flex gap-3">
+        {activePlan ? (
+            <a href={`/nutrition/plans/${activePlan.planId}`} class="px-5 py-2.5 bg-gradient-to-r from-teal-500 to-emerald-500 text-white font-semibold rounded-xl shadow-md hover:shadow-lg transition-all flex items-center gap-2">
+                <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="text-white"><path d="M12 22a9 9 0 0 0 9-9c0-4.97-4-9-9-9s-9 4.03-9 9a9 9 0 0 0 9 9Z"/></svg>
+                Ver Plan Nutricional
+            </a>
+        ) : (
+            <a href={`/nutrition/plans/add?patientId=${profile.patientId}`} class="px-5 py-2.5 bg-gradient-to-r from-amber-500 to-orange-500 text-white font-semibold rounded-xl shadow-md hover:shadow-lg transition-all flex items-center gap-2">
+                <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="text-white"><path d="M5 12h14"/><path d="M12 5v14"/></svg>
+                Crear Plan
+            </a>
+        )}
+    </div>
+  </div>
+
+  <div class="grid grid-cols-1 lg:grid-cols-3 gap-8">
+    <div class="lg:col-span-1 space-y-8">
+        <div class="glass-card rounded-2xl p-6">
+            <div class="flex items-center gap-4 mb-6">
+                <div class="w-16 h-16 bg-slate-100 text-slate-500 rounded-2xl flex items-center justify-center font-bold text-2xl shadow-sm border border-slate-200">
+                    {String(profile.firstName)[0]}{String(profile.lastName)[0]}
+                </div>
+                <div>
+                    <h3 class="font-bold text-slate-800 text-xl">{profile.firstName} {profile.lastName}</h3>
+                    <p class="text-slate-500">{age} años • Exp. #{String(profile.patientId).padStart(4, '0')}</p>
+                    {profile.isAthlete === 1 && <span class="text-xs font-bold text-amber-600 uppercase tracking-widest mt-1 block">Atleta: {profile.sport}</span>}
+                </div>
+            </div>
+
+            <div class="space-y-4">
+                <div class="flex justify-between items-center py-2 border-b border-slate-100">
+                    <span class="text-sm font-semibold text-slate-500">Diagnóstico Principal</span>
+                    <span class="text-sm font-bold text-slate-800">{profile.nutritionalDiagnosis}</span>
+                </div>
+                <div class="flex justify-between items-center py-2 border-b border-slate-100">
+                    <span class="text-sm font-semibold text-slate-500">Objetivo</span>
+                    <span class="text-sm font-bold text-slate-800 text-right w-1/2">{profile.nutritionalObjective}</span>
+                </div>
+                <div class="flex justify-between items-center py-2 border-b border-slate-100">
+                    <span class="text-sm font-semibold text-slate-500">Nivel de Actividad</span>
+                    <span class="text-sm font-bold text-slate-800">{profile.physicalActivityLevel}</span>
+                </div>
+            </div>
+            
+            <a href={`/patients/${profile.patientId}`} class="w-full mt-6 px-4 py-2 border border-slate-200 text-slate-600 font-semibold rounded-xl hover:bg-slate-50 transition-colors flex justify-center items-center gap-2">
+                <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M2 12s3-7 10-7 10 7 10 7-3 7-10 7-10-7-10-7Z"/><circle cx="12" cy="12" r="3"/></svg>
+                Ver Expediente Clínico Completo
+            </a>
+        </div>
+
+        <div class="glass-card rounded-2xl p-6 bg-gradient-to-br from-teal-50 to-sky-50 border border-teal-100">
+            <h3 class="font-bold text-slate-800 mb-4 flex items-center gap-2">
+                <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" class="text-teal-600" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect width="18" height="18" x="3" y="4" rx="2" ry="2"/><line x1="16" x2="16" y1="2" y2="6"/><line x1="8" x2="8" y1="2" y2="6"/><line x1="3" x2="21" y1="10" y2="10"/><path d="M8 14h.01"/><path d="M12 14h.01"/><path d="M16 14h.01"/><path d="M8 18h.01"/><path d="M12 18h.01"/><path d="M16 18h.01"/></svg>
+                Antropometría
+            </h3>
+            <div class="grid grid-cols-2 gap-4">
+                 <div class="bg-white rounded-xl p-3 border border-teal-100 shadow-sm">
+                    <p class="text-[10px] text-slate-400 font-bold uppercase tracking-wider mb-1">Cintura</p>
+                    <p class="font-bold text-slate-800 text-lg">{profile.waistCircumference || '--'} <span class="text-xs text-slate-500">cm</span></p>
+                 </div>
+                 <div class="bg-white rounded-xl p-3 border border-teal-100 shadow-sm">
+                    <p class="text-[10px] text-slate-400 font-bold uppercase tracking-wider mb-1">% Grasa</p>
+                    <p class="font-bold text-slate-800 text-lg">{profile.bodyFatPercentage || '--'} <span class="text-xs text-slate-500">%</span></p>
+                 </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="lg:col-span-2 space-y-6">
+        <div class="glass-card rounded-2xl p-6">
+            <h3 class="text-xl font-bold text-slate-800 border-b border-slate-100 pb-3 mb-4">Antecedentes y Hábitos</h3>
+            
+            <div class="space-y-6">
+                <div>
+                    <h4 class="text-sm font-semibold text-slate-400 uppercase tracking-wider mb-2">Historial Familiar</h4>
+                    <p class="text-slate-700 bg-white/50 p-3 rounded-xl border border-slate-100">{profile.familyHistory || 'No reportados.'}</p>
+                </div>
+                
+                <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+                    <div>
+                        <h4 class="text-sm font-semibold text-slate-400 uppercase tracking-wider mb-2">Hábitos Alimenticios</h4>
+                        <p class="text-slate-700 bg-white/50 p-3 rounded-xl border border-slate-100 min-h-24">{profile.dietaryHabits || 'No evaluados.'}</p>
+                    </div>
+                    <div>
+                        <h4 class="text-sm font-semibold text-slate-400 uppercase tracking-wider mb-2">Frecuencia de Consumo</h4>
+                        <p class="text-slate-700 bg-white/50 p-3 rounded-xl border border-slate-100 min-h-24">{profile.consumptionFrequency || 'No evaluados.'}</p>
+                    </div>
+                </div>
+
+                <div>
+                    <h4 class="text-sm font-semibold text-slate-400 uppercase tracking-wider mb-2">Recordatorio 24 Horas</h4>
+                    <p class="text-slate-700 bg-white/50 p-4 rounded-xl border border-slate-100 italic">{profile.dietaryRecall24h || 'No registrado.'}</p>
+                </div>
+                
+                <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+                    <div>
+                        <h4 class="text-sm font-semibold text-slate-400 uppercase tracking-wider mb-2">Horarios</h4>
+                        <p class="text-slate-700 font-medium flex items-center gap-2">
+                            <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="text-teal-500"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
+                            {profile.mealSchedule || '--'}
+                        </p>
+                    </div>
+                    <div>
+                        <h4 class="text-sm font-semibold text-slate-400 uppercase tracking-wider mb-2">Hidratación Diaria</h4>
+                        <p class="text-slate-700 font-medium flex items-center gap-2">
+                            <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="text-sky-500"><path d="M12 22a9 9 0 0 0 9-9c0-4.97-4-9-9-9s-9 4.03-9 9a9 9 0 0 0 9 9Z"/></svg>
+                            {profile.waterConsumptionLiters ? `${profile.waterConsumptionLiters} Litros` : '--'}
+                        </p>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+  </div>
+</Layout>
