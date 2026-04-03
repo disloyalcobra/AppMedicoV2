@@ -9,16 +9,38 @@ if (!checkRole(user, [ROLES.DOCTOR, ROLES.JEFE_MEDICO, ROLES.ADMINISTRADOR])) {
 }
 
 const url = Astro.url;
-let patientId = url.searchParams.get('patientId') || '6';
+const patientId = url.searchParams.get('patientId');
+const appointmentId = url.searchParams.get('appointmentId');
 
-// Generar o usar una cita falsa ligada a este paciente para probar 
-// En producción, elegiríamos el appointmentId del flujo real
-// Aquí obtenemos the "next" or recent appointment
-const apts = await db.execute({
-  sql: `SELECT appointmentId FROM Appointments WHERE patientId = ? ORDER BY dateTime DESC LIMIT 1`,
-  args: [patientId]
-});
-const mockAptId = apts.rows.length > 0 ? apts.rows[0].appointmentId : 1;
+// Si no hay ID de paciente ni de cita, no podemos iniciar la consulta
+if (!patientId && !appointmentId) {
+  return Astro.redirect('/patients?error=missing_params');
+}
+
+// Determinar el ID de la cita (Appointment) vinculado
+let finalAptId = appointmentId;
+if (!finalAptId) {
+  const apts = await db.execute({
+    sql: `SELECT appointmentId FROM Appointments WHERE patientId = ? AND status != 'Cancelada' ORDER BY dateTime DESC LIMIT 1`,
+    args: [patientId]
+  });
+  finalAptId = apts.rows[0]?.appointmentId as any;
+}
+
+// Si no se encuentra una cita para este paciente, redirigimos con error
+if (!finalAptId) {
+  return Astro.redirect(`/patients/${patientId}?error=no_appointment_found`);
+}
+
+// Obtener el ID del paciente si solo tenemos la cita
+let finalPatientId = patientId;
+if (!finalPatientId) {
+  const pRes = await db.execute({
+    sql: `SELECT patientId FROM Appointments WHERE appointmentId = ?`,
+    args: [finalAptId]
+  });
+  finalPatientId = pRes.rows[0]?.patientId as any;
+}
 
 if (Astro.request.method === 'POST') {
   const data = await Astro.request.formData();
@@ -28,19 +50,25 @@ if (Astro.request.method === 'POST') {
 
   await db.execute({
     sql: `INSERT INTO Consultations (appointmentId, diagnosis, symptoms, consultationDate) VALUES (?, ?, ?, ?)`,
-    args: [mockAptId, diagnosis, symptoms, date]
+    args: [finalAptId, diagnosis, symptoms, date]
   });
 
-  return Astro.redirect(`/patients/${patientId}`);
+  // Marcar cita como completada automáticamente
+  await db.execute({
+    sql: `UPDATE Appointments SET status = 'Completada' WHERE appointmentId = ?`,
+    args: [finalAptId]
+  });
+
+  return Astro.redirect(`/patients/${finalPatientId}`);
 }
 
 const patientDataRes = await db.execute({
   sql: `SELECT u.firstName, u.lastName, p.dateOfBirth, p.bloodType, p.allergies 
         FROM Patients p JOIN Users u ON p.patientId = u.userId WHERE p.patientId = ?`,
-  args: [patientId]
+  args: [finalPatientId]
 });
 const pt = patientDataRes.rows[0];
-const age = Math.abs(new Date(Date.now() - new Date(pt?.dateOfBirth as string).getTime()).getUTCFullYear() - 1970);
+const age = pt?.dateOfBirth ? Math.abs(new Date(Date.now() - new Date(pt.dateOfBirth as string).getTime()).getUTCFullYear() - 1970) : 'N/A';
 ---
 
 <Layout title="Iniciar Consulta">
@@ -52,7 +80,7 @@ const age = Math.abs(new Date(Date.now() - new Date(pt?.dateOfBirth as string).g
     </div>
     <div class="flex items-center gap-4">
       <h1 class="text-3xl font-bold text-slate-800 tracking-tight">Registro de Consulta</h1>
-      <span class="bg-teal-100 text-teal-800 text-xs font-bold px-3 py-1 rounded-full border border-teal-200 uppercase">Cita #{String(mockAptId).padStart(4, '0')}</span>
+      <span class="bg-teal-100 text-teal-800 text-xs font-bold px-3 py-1 rounded-full border border-teal-200 uppercase">Cita #{String(finalAptId).padStart(4, '0')}</span>
     </div>
   </div>
 
@@ -96,7 +124,7 @@ const age = Math.abs(new Date(Date.now() - new Date(pt?.dateOfBirth as string).g
         
         <div class="flex items-center gap-4 mb-6">
           <div class="w-12 h-12 bg-teal-50 text-teal-700 rounded-full flex items-center justify-center font-bold text-lg border border-teal-200 uppercase">
-            {pt?.firstName?.[0]}{pt?.lastName?.[0]}
+            {pt?.firstName && (pt.firstName as string)[0]}{pt?.lastName && (pt.lastName as string)[0]}
           </div>
           <div>
             <p class="font-bold text-slate-800">{pt?.firstName} {pt?.lastName}</p>
@@ -110,7 +138,7 @@ const age = Math.abs(new Date(Date.now() - new Date(pt?.dateOfBirth as string).g
             <p class="font-medium text-slate-800">{pt?.allergies || 'Ninguna conocida'}</p>
           </div>
           <div class="pt-4 border-t border-teal-100">
-            <a href={`/patients/${patientId}`} class="text-teal-600 font-semibold text-xs hover:underline inline-block mt-1">Ver expediente completo &rarr;</a>
+            <a href={`/patients/${finalPatientId}`} class="text-teal-600 font-semibold text-xs hover:underline inline-block mt-1">Ver expediente completo &rarr;</a>
           </div>
         </div>
       </div>

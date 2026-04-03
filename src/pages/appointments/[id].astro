@@ -9,6 +9,7 @@ if (!checkRole(user, [ROLES.DOCTOR, ROLES.JEFE_MEDICO, ROLES.STAFF, ROLES.ADMINI
 }
 
 const { id } = Astro.params;
+if (!id) return Astro.redirect('/404');
 
 const aptRes = await db.execute({
     sql: `SELECT a.*, p.patientId, p.gender, p.dateOfBirth, 
@@ -34,7 +35,7 @@ if (user?.roleId === ROLES.ESTUDIANTE && Number(user.userId) !== Number(app.pati
 }
 
 // Parse Date and Time safely
-const dateObj = new Date((app.dateTime as string).replace(' ', 'T'));
+const dateObj = new Date(String(app.dateTime || '').replace(' ', 'T'));
 const dateStr = dateObj.toLocaleDateString('es-MX', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' });
 const timeStr = dateObj.toLocaleTimeString('es-MX', { hour: '2-digit', minute:'2-digit', hour12: true });
 
@@ -43,10 +44,12 @@ if (Astro.request.method === 'POST') {
     const data = await Astro.request.formData();
     const newStatus = data.get('status') as string;
     
-    await db.execute({
-        sql: `UPDATE Appointments SET status = ? WHERE appointmentId = ?`,
-        args: [newStatus, id]
-    });
+    if (newStatus) {
+        await db.execute({
+            sql: `UPDATE Appointments SET status = ? WHERE appointmentId = ?`,
+            args: [newStatus, id]
+        });
+    }
     
     return Astro.redirect(`/appointments/${id}`);
 }

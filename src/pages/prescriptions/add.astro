@@ -8,31 +8,46 @@ if (!checkRole(user, [ROLES.DOCTOR, ROLES.JEFE_MEDICO, ROLES.ADMINISTRADOR])) {
   return Astro.redirect('/403');
 }
 
-// Leer consultationId desde URL si viene de una consulta específica
+// 1. Leer consultationId y patientId desde URL
 const consultationIdParam = Astro.url.searchParams.get('consultationId');
 const patientIdParam = Astro.url.searchParams.get('patientId');
 
-// Obtener la consulta correspondiente
-let consId: number;
-let patientReturnId: string | number = patientIdParam || '6';
+if (!consultationIdParam && !patientIdParam) {
+  return Astro.redirect('/patients?error=missing_context_for_prescription');
+}
 
+let consId: number;
+let finalPatientId: string | number;
+
+// 2. Determinar el ID de la consulta (Consultation)
 if (consultationIdParam) {
   consId = Number(consultationIdParam);
+  // Si no tenemos el patientId, lo buscamos a través de la consulta
   if (!patientIdParam) {
-    const pRes2 = await db.execute({
-      sql: `SELECT patientId FROM Appointments WHERE appointmentId = (SELECT appointmentId FROM Consultations WHERE consultationId = ?)`,
+    const pRes = await db.execute({
+      sql: `SELECT a.patientId FROM Consultations c JOIN Appointments a ON c.appointmentId = a.appointmentId WHERE c.consultationId = ?`,
       args: [consId]
     });
-    patientReturnId = pRes2.rows.length > 0 ? pRes2.rows[0].patientId as number : 6;
+    if (pRes.rows.length === 0) return Astro.redirect('/patients?error=consultation_not_found');
+    finalPatientId = pRes.rows[0].patientId as number;
+  } else {
+    finalPatientId = patientIdParam;
   }
 } else {
+  // Si solo tenemos el patientId, buscamos su consulta más reciente
   const recentConsResult = await db.execute({
-    sql: `SELECT consultationId FROM Consultations 
-          WHERE appointmentId IN (SELECT appointmentId FROM Appointments WHERE patientId = ?)
-          ORDER BY consultationDate DESC LIMIT 1`,
-    args: [patientReturnId]
+    sql: `SELECT c.consultationId FROM Consultations c 
+          JOIN Appointments a ON c.appointmentId = a.appointmentId 
+          WHERE a.patientId = ? 
+          ORDER BY c.consultationDate DESC LIMIT 1`,
+    args: [patientIdParam]
   });
-  consId = recentConsResult.rows.length > 0 ? recentConsResult.rows[0].consultationId as number : 1;
+  
+  if (recentConsResult.rows.length === 0) {
+    return Astro.redirect(`/patients/${patientIdParam}?error=no_consultation_found`);
+  }
+  consId = recentConsResult.rows[0].consultationId as number;
+  finalPatientId = patientIdParam!;
 }
 
 if (Astro.request.method === 'POST') {
@@ -57,7 +72,7 @@ if (Astro.request.method === 'POST') {
   if (consultationIdParam) {
     return Astro.redirect(`/consultations/${consultationIdParam}`);
   }
-  return Astro.redirect(`/patients/${patientReturnId}`);
+  return Astro.redirect(`/patients/${finalPatientId}`);
 }
 
 // Cargar medicamentos reales del inventario
@@ -72,7 +87,7 @@ const medications = medResult.rows;
       {consultationIdParam ? (
         <a href={`/consultations/${consultationIdParam}`} class="hover:text-teal-600 transition-colors">Volver a Consulta</a>
       ) : (
-        <a href={`/patients/${patientReturnId}`} class="hover:text-teal-600 transition-colors">Volver a Expediente</a>
+        <a href={`/patients/${finalPatientId}`} class="hover:text-teal-600 transition-colors">Volver a Expediente</a>
       )}
       <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m9 18 6-6-6-6"/></svg>
       <span class="text-indigo-700">Añadir Receta</span>
@@ -90,7 +105,7 @@ const medications = medResult.rows;
           <select name="medicationId" id="medicationId" class="w-full bg-white/50 border border-slate-200/60 rounded-xl pl-10 pr-4 py-3 text-slate-800 focus:outline-none focus:ring-2 focus:ring-teal-500 appearance-none" required>
             <option value="">Buscar molécula o marca...</option>
             {medications.map(m => (
-                <option value={m.medicationId}>{m.brandName} ({m.activeIngredient}) - {m.presentation} (Stock: {m.currentStock})</option>
+                <option value={String(m.medicationId)}>{m.brandName} ({m.activeIngredient}) - {m.presentation} (Stock: {m.currentStock})</option>
             ))}
             <option value="custom">-- Prescribir medicamento externo (sin control de inventario) --</option>
           </select>
@@ -117,7 +132,7 @@ const medications = medResult.rows;
         {consultationIdParam ? (
           <a href={`/consultations/${consultationIdParam}`} class="px-5 py-2.5 bg-white/50 border border-slate-200 text-slate-700 font-semibold rounded-xl hover:bg-slate-50 transition-colors">Cancelar</a>
         ) : (
-          <a href={`/patients/${patientReturnId}`} class="px-5 py-2.5 bg-white/50 border border-slate-200 text-slate-700 font-semibold rounded-xl hover:bg-slate-50 transition-colors">Cancelar</a>
+          <a href={`/patients/${finalPatientId}`} class="px-5 py-2.5 bg-white/50 border border-slate-200 text-slate-700 font-semibold rounded-xl hover:bg-slate-50 transition-colors">Cancelar</a>
         )}
         <button type="submit" class="px-6 py-2.5 bg-gradient-to-r from-indigo-500 to-violet-500 text-white font-semibold rounded-xl shadow-md hover:shadow-lg transition-all">Añadir Receta</button>
       </div>
