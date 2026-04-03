@@ -1,0 +1,15 @@
+---
+interface Props {
+  href: string;
+  label: string;
+  icon: string; // SVG path or generic icon name
+  active?: boolean;
+}
+
+const { href, label, icon, active = false } = Astro.props;
+---
+
+<a href={href} class={`w-full flex items-center gap-3 px-4 py-3 rounded-xl text-left transition-all duration-300 ${active ? 'bg-gradient-to-r from-teal-500 to-emerald-500 text-white shadow-md transform translate-x-1' : 'text-slate-700 hover:bg-white/40 hover:translate-x-1'}`}>
+  <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="w-5 h-5 flex-shrink-0" set:html={icon} />
+  <span class="font-medium text-sm">{label}</span>
+</a>

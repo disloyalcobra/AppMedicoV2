@@ -1,0 +1,107 @@
+---
+import StatsCard from './StatsCard.astro';
+import { db } from '../../turso';
+
+const { user } = Astro.props;
+
+const ICONS = {
+  users: '<path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M22 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/>',
+  injury: '<path d="M12 2v20"/><path d="m14.5 4-5 5"/><path d="m14.5 9.5-5 5"/><path d="m14.5 15-5 5"/>',
+  alert: '<path d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3Z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/>',
+};
+
+// Atletas asignados al coach
+const athletesRes = await db.execute({
+  sql: `SELECT p.patientId, u.firstName, u.lastName, p.isAthlete
+        FROM Coach_Athlete ca
+        JOIN Patients p ON ca.patientId = p.patientId
+        JOIN Users u ON p.patientId = u.userId
+        WHERE ca.coachId = ?`,
+  args: [user.userId]
+});
+const athletes = athletesRes.rows;
+const athleteIds = athletes.map(a => a.patientId);
+
+// Lesiones activas de sus atletas
+let activeInjuries = 0;
+if (athleteIds.length > 0) {
+  const placeholders = athleteIds.map(() => '?').join(',');
+  const injRes = await db.execute({
+    sql: `SELECT COUNT(*) as total FROM Injuries WHERE status = 'Activa' AND patientId IN (${placeholders})`,
+    args: athleteIds as any[]
+  });
+  activeInjuries = Number(injRes.rows[0].total);
+}
+---
+
+<div class="mb-8">
+  <h1 class="text-3xl font-bold text-slate-800 tracking-tight">Panel del Entrenador</h1>
+  <p class="text-slate-500 mt-1">Hola, {user?.firstName} — monitoreo deportivo y médico de tus atletas</p>
+</div>
+
+<div class="grid grid-cols-1 md:grid-cols-2 gap-6 mb-8">
+  <StatsCard title="Atletas Asignados" value={athletes.length} icon={ICONS.users} colorClass="from-sky-500 to-indigo-500" href="/patients"/>
+  <StatsCard title="Lesiones Activas" value={activeInjuries} icon={ICONS.injury} colorClass="from-rose-500 to-pink-500" href="/injuries"/>
+</div>
+
+<div class="grid grid-cols-1 xl:grid-cols-2 gap-8">
+  <!-- Listado de atletas -->
+  <div class="glass-card rounded-2xl p-6">
+    <div class="flex items-center justify-between mb-5">
+      <h3 class="text-xl font-bold text-slate-800">Mis Atletas</h3>
+      <a href="/patients" class="text-sm font-semibold text-teal-600 hover:underline">Ver todos →</a>
+    </div>
+    <div class="space-y-3">
+      {athletes.length === 0 ? (
+        <div class="text-center py-8 text-slate-500 text-sm">No tienes atletas asignados aún.</div>
+      ) : athletes.map((athlete: any) => (
+        <a href={`/patients/${athlete.patientId}`} class="flex items-center justify-between p-3 bg-white/40 border border-white/60 rounded-xl hover:bg-white/60 transition-colors group">
+          <div class="flex items-center gap-3">
+            <div class="w-9 h-9 bg-sky-50 text-sky-700 border border-sky-200 rounded-full flex items-center justify-center font-bold text-sm">
+              {String(athlete.firstName)[0]}{String(athlete.lastName)[0]}
+            </div>
+            <div>
+              <p class="font-bold text-slate-800 text-sm">{athlete.firstName} {athlete.lastName}</p>
+              <p class="text-xs text-slate-500">Exp. #{String(athlete.patientId).padStart(4, '0')}</p>
+            </div>
+          </div>
+          <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="text-slate-400 group-hover:text-teal-600 transition-colors"><path d="m9 18 6-6-6-6"/></svg>
+        </a>
+      ))}
+    </div>
+  </div>
+
+  <!-- Acciones rápidas del entrenador -->
+  <div class="glass-card rounded-2xl p-6">
+    <h3 class="text-xl font-bold text-slate-800 mb-5">Acciones</h3>
+    <div class="space-y-3">
+      <a href="/injuries/add" class="flex items-center gap-4 p-4 rounded-xl border border-rose-200 bg-rose-50 hover:bg-rose-100 transition-colors group">
+        <div class="w-10 h-10 bg-rose-200 text-rose-700 rounded-xl flex items-center justify-center group-hover:bg-rose-500 group-hover:text-white transition-colors">
+          <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2v20"/><path d="m14.5 4-5 5"/><path d="m14.5 9.5-5 5"/><path d="m14.5 15-5 5"/></svg>
+        </div>
+        <div>
+          <p class="font-bold text-rose-900">Reportar Lesión</p>
+          <p class="text-xs text-rose-700">Registrar incidente de algún atleta</p>
+        </div>
+      </a>
+      <a href="/injuries" class="flex items-center gap-4 p-4 rounded-xl border border-amber-200 bg-amber-50 hover:bg-amber-100 transition-colors group">
+        <div class="w-10 h-10 bg-amber-200 text-amber-700 rounded-xl flex items-center justify-center group-hover:bg-amber-500 group-hover:text-white transition-colors">
+          <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M2 12s3-7 10-7 10 7 10 7-3 7-10 7-10-7-10-7Z"/><circle cx="12" cy="12" r="3"/></svg>
+        </div>
+        <div>
+          <p class="font-bold text-amber-900">Ver Lesiones</p>
+          <p class="text-xs text-amber-700">Historial de lesiones de tus atletas</p>
+        </div>
+      </a>
+      <a href="/nutrition/profiles" class="flex items-center gap-4 p-4 rounded-xl border border-teal-200 bg-teal-50 hover:bg-teal-100 transition-colors group">
+        <div class="w-10 h-10 bg-teal-200 text-teal-700 rounded-xl flex items-center justify-center group-hover:bg-teal-500 group-hover:text-white transition-colors">
+          <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 22a9 9 0 0 0 9-9c0-4.97-4-9-9-9s-9 4.03-9 9a9 9 0 0 0 9 9Z"/></svg>
+        </div>
+        <div>
+          <p class="font-bold text-teal-900">Planes Nutricionales</p>
+          <p class="text-xs text-teal-700">Ver planes asignados por el nutriólogo</p>
+        </div>
+      </a>
+    </div>
+  </div>
+</div>

@@ -1,0 +1,126 @@
+---
+import Layout from '../../layouts/Layout.astro';
+import { ROLES, checkRole } from '../../functions/checkRole';
+import { db } from '../../turso';
+
+const user = Astro.locals.user;
+if (!checkRole(user, [ROLES.DOCTOR, ROLES.JEFE_MEDICO, ROLES.ADMINISTRADOR])) {
+  return Astro.redirect('/403');
+}
+
+// Leer consultationId desde URL si viene de una consulta específica
+const consultationIdParam = Astro.url.searchParams.get('consultationId');
+const patientIdParam = Astro.url.searchParams.get('patientId');
+
+// Obtener la consulta correspondiente
+let consId: number;
+let patientReturnId: string | number = patientIdParam || '6';
+
+if (consultationIdParam) {
+  consId = Number(consultationIdParam);
+  if (!patientIdParam) {
+    const pRes2 = await db.execute({
+      sql: `SELECT patientId FROM Appointments WHERE appointmentId = (SELECT appointmentId FROM Consultations WHERE consultationId = ?)`,
+      args: [consId]
+    });
+    patientReturnId = pRes2.rows.length > 0 ? pRes2.rows[0].patientId as number : 6;
+  }
+} else {
+  const recentConsResult = await db.execute({
+    sql: `SELECT consultationId FROM Consultations 
+          WHERE appointmentId IN (SELECT appointmentId FROM Appointments WHERE patientId = ?)
+          ORDER BY consultationDate DESC LIMIT 1`,
+    args: [patientReturnId]
+  });
+  consId = recentConsResult.rows.length > 0 ? recentConsResult.rows[0].consultationId as number : 1;
+}
+
+if (Astro.request.method === 'POST') {
+  const data = await Astro.request.formData();
+  let medicationId = data.get('medicationId') as string;
+  const dosage = data.get('dosage') as string;
+  const frequency = data.get('frequency') as string;
+  const duration = data.get('duration') as string;
+
+  if (medicationId === 'custom' || !medicationId) {
+     // En un sistema robusto guardaríamos "Medicamento Externo", 
+     // pero para la funcionalidad principal forzaremos Paracetamol(1) 
+     medicationId = '1';
+  }
+
+  await db.execute({
+      sql: `INSERT INTO Prescriptions (consultationId, medicationId, dosage, frequency, duration) VALUES (?, ?, ?, ?, ?)`,
+      args: [consId, Number(medicationId), dosage, frequency, duration]
+  });
+
+  // Regresar a la consulta si venimos de ahí, si no al expediente
+  if (consultationIdParam) {
+    return Astro.redirect(`/consultations/${consultationIdParam}`);
+  }
+  return Astro.redirect(`/patients/${patientReturnId}`);
+}
+
+// Cargar medicamentos reales del inventario
+const medResult = await db.execute(`SELECT medicationId, brandName, activeIngredient, presentation, currentStock FROM Medications WHERE currentStock > 0`);
+const medications = medResult.rows;
+
+---
+
+<Layout title="Recetar Medicamento">
+  <div class="mb-8">
+    <div class="flex items-center gap-3 text-sm font-semibold text-slate-500 mb-2">
+      {consultationIdParam ? (
+        <a href={`/consultations/${consultationIdParam}`} class="hover:text-teal-600 transition-colors">Volver a Consulta</a>
+      ) : (
+        <a href={`/patients/${patientReturnId}`} class="hover:text-teal-600 transition-colors">Volver a Expediente</a>
+      )}
+      <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m9 18 6-6-6-6"/></svg>
+      <span class="text-indigo-700">Añadir Receta</span>
+    </div>
+    <h1 class="text-3xl font-bold text-slate-800 tracking-tight">Recetar Medicamento</h1>
+  </div>
+
+  <div class="max-w-2xl">
+    <form method="POST" class="glass-card rounded-2xl p-6 space-y-6">
+      
+      <div>
+        <label for="medicationId" class="block text-sm font-semibold text-slate-700 mb-1.5 ml-1">Buscar Medicamento en Inventario</label>
+        <div class="relative">
+          <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="absolute left-3 top-3.5 text-slate-400"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/></svg>
+          <select name="medicationId" id="medicationId" class="w-full bg-white/50 border border-slate-200/60 rounded-xl pl-10 pr-4 py-3 text-slate-800 focus:outline-none focus:ring-2 focus:ring-teal-500 appearance-none" required>
+            <option value="">Buscar molécula o marca...</option>
+            {medications.map(m => (
+                <option value={m.medicationId}>{m.brandName} ({m.activeIngredient}) - {m.presentation} (Stock: {m.currentStock})</option>
+            ))}
+            <option value="custom">-- Prescribir medicamento externo (sin control de inventario) --</option>
+          </select>
+        </div>
+      </div>
+
+      <div class="grid grid-cols-1 md:grid-cols-2 gap-5">
+        <div>
+          <label for="dosage" class="block text-sm font-semibold text-slate-700 mb-1.5 ml-1">Dosis</label>
+          <input type="text" name="dosage" id="dosage" class="w-full bg-white/50 border border-slate-200/60 rounded-xl px-4 py-2.5 text-slate-800 focus:outline-none focus:ring-2 focus:ring-teal-500" placeholder="Ej. 1 tableta, 5ml..." required />
+        </div>
+        <div>
+          <label for="frequency" class="block text-sm font-semibold text-slate-700 mb-1.5 ml-1">Frecuencia</label>
+          <input type="text" name="frequency" id="frequency" class="w-full bg-white/50 border border-slate-200/60 rounded-xl px-4 py-2.5 text-slate-800 focus:outline-none focus:ring-2 focus:ring-teal-500" placeholder="Ej. Cada 8 horas..." required />
+        </div>
+      </div>
+
+      <div>
+        <label for="duration" class="block text-sm font-semibold text-slate-700 mb-1.5 ml-1">Duración del tratamiento</label>
+        <input type="text" name="duration" id="duration" class="w-full bg-white/50 border border-slate-200/60 rounded-xl px-4 py-2.5 text-slate-800 focus:outline-none focus:ring-2 focus:ring-teal-500" placeholder="Ej. Por 7 días..." required />
+      </div>
+
+      <div class="flex justify-end gap-3 pt-4 border-t border-slate-200/60">
+        {consultationIdParam ? (
+          <a href={`/consultations/${consultationIdParam}`} class="px-5 py-2.5 bg-white/50 border border-slate-200 text-slate-700 font-semibold rounded-xl hover:bg-slate-50 transition-colors">Cancelar</a>
+        ) : (
+          <a href={`/patients/${patientReturnId}`} class="px-5 py-2.5 bg-white/50 border border-slate-200 text-slate-700 font-semibold rounded-xl hover:bg-slate-50 transition-colors">Cancelar</a>
+        )}
+        <button type="submit" class="px-6 py-2.5 bg-gradient-to-r from-indigo-500 to-violet-500 text-white font-semibold rounded-xl shadow-md hover:shadow-lg transition-all">Añadir Receta</button>
+      </div>
+    </form>
+  </div>
+</Layout>

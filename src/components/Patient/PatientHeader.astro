@@ -1,0 +1,79 @@
+---
+interface Props {
+  patient: {
+    id: number;
+    firstName: string;
+    lastName: string;
+    age: number;
+    bloodType: string;
+    allergies: string;
+    weight: number;
+    height: number;
+    isAthlete: number;
+    gender: string;
+    schoolLevel: string;
+  };
+}
+
+const { patient } = Astro.props;
+---
+
+<div class="glass-card rounded-2xl p-6 mb-6 relative overflow-hidden">
+  <!-- Status Stripe -->
+  <div class="absolute left-0 top-0 bottom-0 w-1.5 bg-gradient-to-b from-teal-400 to-sky-500"></div>
+
+  <div class="flex flex-col md:flex-row gap-6 items-start md:items-center justify-between">
+    <div class="flex items-center gap-5">
+      <div class={`w-20 h-20 rounded-2xl flex items-center justify-center text-3xl font-bold shadow-md border-2 ${patient.isAthlete === 1 ? 'bg-amber-50 text-amber-700 border-amber-200' : 'bg-teal-50 text-teal-700 border-teal-200'}`}>
+        {patient.firstName[0]}{patient.lastName[0]}
+      </div>
+      <div>
+        <div class="flex items-center gap-3 mb-1">
+          <h2 class="text-2xl font-bold text-slate-800 tracking-tight">{patient.firstName} {patient.lastName}</h2>
+          {patient.isAthlete === 1 && (
+            <span class="bg-amber-100 text-amber-800 text-[10px] font-bold px-2.5 py-1 rounded-full border border-amber-200 uppercase tracking-widest flex items-center gap-1">
+              <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2v20"/><path d="m14.5 4-5 5"/><path d="m14.5 9.5-5 5"/><path d="m14.5 15-5 5"/></svg>
+              Atleta
+            </span>
+          )}
+        </div>
+        <p class="text-slate-500 font-medium">Expediente #{patient.id.toString().padStart(4, '0')} • {patient.age} años</p>
+      </div>
+    </div>
+
+    <div class="flex gap-4">
+      <button class="px-4 py-2 border border-slate-200/60 rounded-xl bg-white/50 text-slate-600 hover:bg-slate-50/80 hover:text-teal-600 transition-colors flex items-center gap-2 text-sm font-medium">
+        <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20h9"/><path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4Z"/></svg>
+        Editar Perfil
+      </button>
+      <button class="px-4 py-2 border border-slate-200/60 rounded-xl bg-white/50 text-slate-600 hover:bg-slate-50/80 hover:text-teal-600 transition-colors flex items-center gap-2 text-sm font-medium">
+        <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
+        Agregar Alerta
+      </button>
+    </div>
+  </div>
+
+  <div class="grid grid-cols-2 md:grid-cols-4 gap-4 mt-6 pt-6 border-t border-slate-200/60">
+    <div>
+      <p class="text-[10px] uppercase font-bold text-slate-400 tracking-wider mb-1">Tipo de Sangre</p>
+      <p class="font-semibold text-slate-800 flex items-center gap-1.5">
+        <span class="w-2.5 h-2.5 rounded-full bg-rose-500"></span>
+        {patient.bloodType}
+      </p>
+    </div>
+    <div>
+      <p class="text-[10px] uppercase font-bold text-slate-400 tracking-wider mb-1">Estatura / Peso</p>
+      <p class="font-semibold text-slate-800">{patient.height} cm / {patient.weight} kg</p>
+    </div>
+    <div>
+      <p class="text-[10px] uppercase font-bold text-slate-400 tracking-wider mb-1">Alergias</p>
+      <p class={`font-semibold ${patient.allergies ? 'text-rose-600' : 'text-slate-800'}`}>
+        {patient.allergies || 'Ninguna conocida'}
+      </p>
+    </div>
+    <div>
+      <p class="text-[10px] uppercase font-bold text-slate-400 tracking-wider mb-1">Género / Escolaridad</p>
+      <p class="font-semibold text-slate-800">{patient.gender === 'M' ? 'Masculino' : patient.gender === 'F' ? 'Femenino' : 'Otro'} • {patient.schoolLevel || 'N/A'}</p>
+    </div>
+  </div>
+</div>

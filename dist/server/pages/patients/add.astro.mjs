@@ -1,0 +1,39 @@
+/* empty css                                  */
+import { e as createComponent, m as maybeRenderHead, l as renderScript, r as renderTemplate, k as renderComponent, h as createAstro } from '../../chunks/astro/server_DBbqSsVa.mjs';
+import 'piccolore';
+import { $ as $$Layout } from '../../chunks/Layout_DrfESANN.mjs';
+import 'clsx';
+import { c as checkRole, R as ROLES } from '../../chunks/checkRole_wmyz_iGO.mjs';
+export { renderers } from '../../renderers.mjs';
+
+const $$PatientForm = createComponent(($$result, $$props, $$slots) => {
+  return renderTemplate`${maybeRenderHead()}<form method="POST" class="space-y-6"> <div class="glass-card rounded-2xl p-6 mb-6"> <h3 class="text-lg font-bold text-slate-800 mb-4 border-b border-white/60 pb-2">Datos Básicos</h3> <div class="grid grid-cols-1 md:grid-cols-2 gap-5"> <div> <label for="firstName" class="block text-sm font-semibold text-slate-700 mb-1.5">Nombre(s)</label> <input type="text" name="firstName" id="firstName" class="w-full bg-white/50 border border-slate-200/60 rounded-xl px-4 py-2.5 text-slate-800 focus:outline-none focus:ring-2 focus:ring-teal-500" required> </div> <div> <label for="lastName" class="block text-sm font-semibold text-slate-700 mb-1.5">Apellidos</label> <input type="text" name="lastName" id="lastName" class="w-full bg-white/50 border border-slate-200/60 rounded-xl px-4 py-2.5 text-slate-800 focus:outline-none focus:ring-2 focus:ring-teal-500" required> </div> <div> <label for="gender" class="block text-sm font-semibold text-slate-700 mb-1.5">Género</label> <select name="gender" id="gender" class="w-full bg-white/50 border border-slate-200/60 rounded-xl px-4 py-2.5 text-slate-800 focus:outline-none focus:ring-2 focus:ring-teal-500" required> <option value="M">Masculino</option> <option value="F">Femenino</option> <option value="X">Otro</option> </select> </div> <div> <label for="dateOfBirth" class="block text-sm font-semibold text-slate-700 mb-1.5">Fecha de Nacimiento</label> <input type="date" name="dateOfBirth" id="dateOfBirth" class="w-full bg-white/50 border border-slate-200/60 rounded-xl px-4 py-2.5 text-slate-800 focus:outline-none focus:ring-2 focus:ring-teal-500" required> </div> </div> </div> <div class="glass-card rounded-2xl p-6 mb-6"> <h3 class="text-lg font-bold text-slate-800 mb-4 border-b border-white/60 pb-2">Datos Médicos</h3> <div class="grid grid-cols-1 md:grid-cols-3 gap-5"> <div> <label for="bloodType" class="block text-sm font-semibold text-slate-700 mb-1.5">Tipo de Sangre</label> <select name="bloodType" id="bloodType" class="w-full bg-white/50 border border-slate-200/60 rounded-xl px-4 py-2.5 text-slate-800 focus:outline-none focus:ring-2 focus:ring-teal-500"> <option value="">Desconocido</option> <option value="A+">A+</option> <option value="A-">A-</option> <option value="B+">B+</option> <option value="B-">B-</option> <option value="AB+">AB+</option> <option value="AB-">AB-</option> <option value="O+">O+</option> <option value="O-">O-</option> </select> </div> <div> <label for="weight" class="block text-sm font-semibold text-slate-700 mb-1.5">Peso (kg)</label> <input type="number" step="0.1" name="weight" id="weight" class="w-full bg-white/50 border border-slate-200/60 rounded-xl px-4 py-2.5 text-slate-800 focus:outline-none focus:ring-2 focus:ring-teal-500"> </div> <div> <label for="height" class="block text-sm font-semibold text-slate-700 mb-1.5">Altura (cm)</label> <input type="number" step="0.1" name="height" id="height" class="w-full bg-white/50 border border-slate-200/60 rounded-xl px-4 py-2.5 text-slate-800 focus:outline-none focus:ring-2 focus:ring-teal-500"> </div> <div class="md:col-span-3"> <label for="allergies" class="block text-sm font-semibold text-slate-700 mb-1.5">Alergias Conocidas</label> <textarea name="allergies" id="allergies" rows="2" class="w-full bg-white/50 border border-slate-200/60 rounded-xl px-4 py-2.5 text-slate-800 focus:outline-none focus:ring-2 focus:ring-teal-500" placeholder="Ej: Penicilina, Nueces... (Dejar en blanco si ninguna)"></textarea> </div> </div> </div> <div class="glass-card rounded-2xl p-6 mb-6"> <div class="flex items-center justify-between border-b border-white/60 pb-4 mb-4"> <div> <h3 class="text-lg font-bold text-amber-800">Perfil de Atleta</h3> <p class="text-sm text-amber-700/80">Activar para habilitar módulo deportivo y lesiones especializadas.</p> </div> <label class="relative inline-flex items-center cursor-pointer"> <input type="checkbox" name="isAthlete" value="1" class="sr-only peer" id="isAthleteToggle"> <div class="w-11 h-6 bg-slate-200 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-amber-300 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-amber-500"></div> </label> </div> <div> <label for="schoolLevel" class="block text-sm font-semibold text-slate-700 mb-1.5">Nivel Escolar</label> <select name="schoolLevel" id="schoolLevel" class="w-full bg-white/50 border border-slate-200/60 rounded-xl px-4 py-2.5 text-slate-800 focus:outline-none focus:ring-2 focus:ring-teal-500"> <option value="">Selecciona Nivel</option> <option value="Primaria">Primaria</option> <option value="Secundaria">Secundaria</option> <option value="Preparatoria">Preparatoria</option> <option value="Universidad">Universidad</option> </select> </div> </div> <div class="flex justify-end gap-3"> <a href="/patients" class="px-5 py-2.5 bg-white/50 border border-slate-200 text-slate-700 font-semibold rounded-xl hover:bg-slate-50 transition-colors">Cancelar</a> <button type="submit" class="px-6 py-2.5 bg-gradient-to-r from-teal-500 to-emerald-500 text-white font-semibold rounded-xl shadow-md hover:shadow-lg transition-all active:scale-[0.98]">Guardar Paciente</button> </div> </form> ${renderScript($$result, "C:/claude-projects/AppMedicoV2/src/components/Patient/PatientForm.astro?astro&type=script&index=0&lang.ts")}`;
+}, "C:/claude-projects/AppMedicoV2/src/components/Patient/PatientForm.astro", void 0);
+
+const $$Astro = createAstro();
+const $$Add = createComponent(async ($$result, $$props, $$slots) => {
+  const Astro2 = $$result.createAstro($$Astro, $$props, $$slots);
+  Astro2.self = $$Add;
+  const user = Astro2.locals.user;
+  if (!checkRole(user, [ROLES.DOCTOR, ROLES.JEFE_MEDICO, ROLES.ADMINISTRADOR])) {
+    return Astro2.redirect("/403");
+  }
+  if (Astro2.request.method === "POST") {
+    return Astro2.redirect("/patients");
+  }
+  return renderTemplate`${renderComponent($$result, "Layout", $$Layout, { "title": "Nuevo Paciente" }, { "default": async ($$result2) => renderTemplate` ${maybeRenderHead()}<div class="mb-8"> <div class="flex items-center gap-3 text-sm font-semibold text-slate-500 mb-2"> <a href="/patients" class="hover:text-teal-600 transition-colors">Pacientes</a> <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m9 18 6-6-6-6"></path></svg> <span class="text-teal-700">Nuevo Registro</span> </div> <h1 class="text-3xl font-bold text-slate-800 tracking-tight">Agregar Paciente</h1> </div> <div class="max-w-4xl"> ${renderComponent($$result2, "PatientForm", $$PatientForm, {})} </div> ` })}`;
+}, "C:/claude-projects/AppMedicoV2/src/pages/patients/add.astro", void 0);
+
+const $$file = "C:/claude-projects/AppMedicoV2/src/pages/patients/add.astro";
+const $$url = "/patients/add";
+
+const _page = /*#__PURE__*/Object.freeze(/*#__PURE__*/Object.defineProperty({
+  __proto__: null,
+  default: $$Add,
+  file: $$file,
+  url: $$url
+}, Symbol.toStringTag, { value: 'Module' }));
+
+const page = () => _page;
+
+export { page };

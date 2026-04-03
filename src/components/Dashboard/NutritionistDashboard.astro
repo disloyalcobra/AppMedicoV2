@@ -1,0 +1,130 @@
+---
+import StatsCard from './StatsCard.astro';
+import { db } from '../../turso';
+
+const { user } = Astro.props;
+
+const ICONS = {
+  users: '<path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/>',
+  plans: '<path d="M12 22a9 9 0 0 0 9-9c0-4.97-4-9-9-9s-9 4.03-9 9a9 9 0 0 0 9 9Z"/>',
+  calendar: '<rect width="18" height="18" x="3" y="4" rx="2" ry="2"/><line x1="16" x2="16" y1="2" y2="6"/><line x1="8" x2="8" y1="2" y2="6"/><line x1="3" x2="21" y1="10" y2="10"/>',
+  followup: '<polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/>',
+};
+
+// Stats reales
+const patRes = await db.execute(`SELECT COUNT(DISTINCT patientId) as total FROM NutritionalProfiles`);
+const totalPatients = Number(patRes.rows[0].total);
+
+const plansRes = await db.execute({
+  sql: `SELECT COUNT(*) as total FROM NutritionalPlans WHERE nutritionistId = ?`,
+  args: [user?.userId]
+});
+const totalPlans = Number(plansRes.rows[0].total);
+
+const aptsRes = await db.execute({
+  sql: `SELECT COUNT(*) as total FROM Appointments WHERE doctorId = ? AND date(dateTime) = date('now')`,
+  args: [user?.userId]
+});
+const aptsToday = Number(aptsRes.rows[0].total);
+
+// Citas de hoy del nutriólogo
+const todayAptsRes = await db.execute({
+  sql: `SELECT a.appointmentId as id, a.dateTime, a.status,
+               u.firstName || ' ' || u.lastName as patient
+        FROM Appointments a
+        JOIN Patients p ON a.patientId = p.patientId
+        JOIN Users u ON p.patientId = u.userId
+        WHERE a.doctorId = ? AND date(a.dateTime) = date('now')
+        ORDER BY a.dateTime ASC LIMIT 5`,
+  args: [user?.userId]
+});
+const todayApts = todayAptsRes.rows;
+
+// Planes pendientes de aceptación
+const pendingRes = await db.execute({
+  sql: `SELECT np.planId, u.firstName || ' ' || u.lastName as patient, np.caloricRequirement
+        FROM NutritionalPlans np
+        JOIN Patients p ON np.patientId = p.patientId
+        JOIN Users u ON p.patientId = u.userId
+        WHERE np.nutritionistId = ? AND np.patientAccepted = 0
+        LIMIT 5`,
+  args: [user?.userId]
+});
+const pendingPlans = pendingRes.rows;
+---
+
+<div class="mb-8 flex justify-between items-end">
+  <div>
+    <h1 class="text-3xl font-bold text-slate-800 tracking-tight">Panel Nutricional</h1>
+    <p class="text-slate-500 mt-1">Hola, {user?.firstName} — {new Date().toLocaleDateString('es-MX', { weekday: 'long', day: 'numeric', month: 'long' })}</p>
+  </div>
+  <a href="/nutrition/profiles" class="px-5 py-2.5 bg-gradient-to-r from-amber-500 to-orange-500 text-white font-semibold rounded-xl shadow hover:shadow-lg hover:-translate-y-0.5 transition-all">
+    Ver Perfiles
+  </a>
+</div>
+
+<div class="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
+  <StatsCard title="Pacientes en Control" value={totalPatients} icon={ICONS.users} colorClass="from-emerald-500 to-teal-500" href="/nutrition/profiles"/>
+  <StatsCard title="Planes Creados" value={totalPlans} icon={ICONS.plans} colorClass="from-amber-500 to-orange-500" href="/nutrition/profiles"/>
+  <StatsCard title="Citas Hoy" value={aptsToday} icon={ICONS.calendar} colorClass="from-sky-500 to-indigo-500" href="/appointments"/>
+</div>
+
+<div class="grid grid-cols-1 xl:grid-cols-2 gap-8">
+  <!-- Citas del día -->
+  <div class="glass-card rounded-2xl p-6">
+    <div class="flex items-center justify-between mb-5">
+      <h3 class="text-xl font-bold text-slate-800">Citas del Día</h3>
+      <a href="/appointments" class="text-sm font-semibold text-teal-600 hover:underline">Ver todas →</a>
+    </div>
+    {todayApts.length === 0 ? (
+      <div class="text-center py-8 text-slate-400">
+        <p class="font-medium">Sin citas programadas para hoy.</p>
+        <a href="/appointments/add" class="text-sm text-amber-600 hover:underline font-bold mt-1 inline-block">+ Agendar</a>
+      </div>
+    ) : (
+      <div class="space-y-3">
+        {todayApts.map((app: any) => (
+          <a href={`/appointments/${app.id}`} class="flex items-center justify-between p-3 bg-white/40 border border-white/60 rounded-xl hover:bg-white/60 transition-colors group">
+            <div class="flex items-center gap-3">
+              <div class="w-10 h-10 bg-amber-50 text-amber-700 rounded-xl flex items-center justify-center font-bold text-xs border border-amber-200">
+                {String(app.dateTime).split('T')[1]?.slice(0,5) || '--:--'}
+              </div>
+              <p class="font-bold text-slate-800 text-sm group-hover:text-amber-700 transition-colors">{app.patient}</p>
+            </div>
+            <span class={`text-[10px] font-bold px-2 py-0.5 rounded-full border ${app.status === 'Completada' ? 'bg-emerald-50 text-emerald-700 border-emerald-200' : 'bg-amber-50 text-amber-700 border-amber-200'}`}>{app.status}</span>
+          </a>
+        ))}
+      </div>
+    )}
+  </div>
+
+  <!-- Planes pendientes de aceptación -->
+  <div class="glass-card rounded-2xl p-6">
+    <div class="flex items-center justify-between mb-5">
+      <h3 class="text-xl font-bold text-slate-800">Planes Sin Confirmar</h3>
+      <a href="/nutrition/profiles" class="text-sm font-semibold text-amber-600 hover:underline">Ver todos →</a>
+    </div>
+    {pendingPlans.length === 0 ? (
+      <div class="text-center py-8 text-slate-400">
+        <p class="font-medium text-sm">Todos los planes han sido aceptados por los pacientes. ✓</p>
+      </div>
+    ) : (
+      <div class="space-y-3">
+        {pendingPlans.map((pl: any) => (
+          <a href={`/nutrition/plans/${pl.planId}`} class="flex items-center justify-between p-3 bg-amber-50/50 border border-amber-100 rounded-xl hover:bg-amber-50 transition-colors group">
+            <div class="flex items-center gap-3">
+              <div class="w-9 h-9 bg-amber-100 text-amber-700 rounded-full flex items-center justify-center font-bold text-sm border border-amber-200">
+                {String(pl.patient)[0]}
+              </div>
+              <div>
+                <p class="font-bold text-slate-800 text-sm">{pl.patient}</p>
+                <p class="text-xs text-slate-500">{pl.caloricRequirement} kcal/día</p>
+              </div>
+            </div>
+            <span class="text-[10px] font-bold px-2 py-0.5 rounded-full bg-amber-50 border border-amber-200 text-amber-700 uppercase">Pendiente</span>
+          </a>
+        ))}
+      </div>
+    )}
+  </div>
+</div>

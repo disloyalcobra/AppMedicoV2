@@ -1,0 +1,146 @@
+---
+import StatsCard from './StatsCard.astro';
+import AlertBanner from './AlertBanner.astro';
+import { db } from '../../turso';
+
+const { user } = Astro.props;
+
+const ICONS = {
+  inventory: '<path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/><polyline points="3.27 6.96 12 12.01 20.73 6.96"/><line x1="12" x2="12" y1="22.08" y2="12"/>',
+  calendar: '<rect width="18" height="18" x="3" y="4" rx="2" ry="2"/><line x1="16" x2="16" y1="2" y2="6"/><line x1="8" x2="8" y1="2" y2="6"/><line x1="3" x2="21" y1="10" y2="10"/><path d="M8 14h.01"/><path d="M12 14h.01"/><path d="M16 14h.01"/><path d="M8 18h.01"/><path d="M12 18h.01"/><path d="M16 18h.01"/>',
+  alert: '<circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/>'
+};
+
+// 1. Citas Hoy
+const aptRes = await db.execute(`
+    SELECT COUNT(*) as total 
+    FROM Appointments 
+    WHERE date(dateTime) = date('now')
+`);
+const appointmentsToday = Number(aptRes.rows[0].total);
+
+// 2. Medicamentos Críticos
+const stockRes = await db.execute(`
+    SELECT COUNT(*) as total, group_concat(brandName) as names 
+    FROM Medications 
+    WHERE currentStock <= reorderPoint
+`);
+const criticalMedsCount = Number(stockRes.rows[0].total);
+const criticalMedsNames = stockRes.rows[0].names;
+
+// 3. Doctores Totales
+const docsRes = await db.execute(`SELECT COUNT(*) as total FROM Users WHERE roleId = 3`);
+const activeDoctors = Number(docsRes.rows[0].total);
+
+const stats = [
+  { title: 'Citas Hoy', value: appointmentsToday, icon: ICONS.calendar, trend: 'Global', color: 'from-emerald-500 to-teal-500' },
+  { title: 'Medicamentos Críticos', value: criticalMedsCount, icon: ICONS.inventory, trend: 'En Farmacia', color: 'from-rose-500 to-pink-500' },
+  { title: 'Doctores Activos', value: activeDoctors, icon: ICONS.alert, trend: 'En Clínica', color: 'from-sky-500 to-indigo-500' }
+];
+
+let alerts: any[] = [];
+if (criticalMedsCount > 0) {
+    alerts.push({ type: 'stock', message: `Alerta: Hay ${criticalMedsCount} medicamentos en stock crítico (${criticalMedsNames}).`, link: '/medications' });
+}
+
+// 4. Agenda General (Recientes)
+const mockRes = await db.execute(`
+  SELECT a.dateTime, a.status,
+         u.firstName || ' ' || u.lastName as patient,
+         ud.lastName as doctor
+  FROM Appointments a
+  JOIN Patients p ON a.patientId = p.patientId
+  JOIN Users u ON p.patientId = u.userId
+  JOIN Users ud ON a.doctorId = ud.userId
+  WHERE date(a.dateTime) >= date('now')
+  ORDER BY a.dateTime ASC LIMIT 5
+`);
+
+const mockAppointments = mockRes.rows.map(r => ({
+  time: new Date(r.dateTime as string).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+  doctor: `Dr. ${r.doctor}`,
+  patient: r.patient,
+  status: r.status
+}));
+---
+
+<div class="mb-8">
+  <h1 class="text-3xl font-bold text-slate-800 tracking-tight">Panel Administrativo Staff</h1>
+  <p class="text-slate-500 mt-1 text-lg">Control de agenda, inventario y logística</p>
+</div>
+
+<AlertBanner alerts={alerts} />
+
+<div class="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
+  {stats.map(stat => (
+    <StatsCard 
+      title={stat.title}
+      value={stat.value}
+      icon={stat.icon}
+      trendLabel={stat.trend}
+      colorClass={stat.color}
+    />
+  ))}
+</div>
+
+<div class="grid grid-cols-1 xl:grid-cols-2 gap-8">
+  <div class="glass-card rounded-2xl p-6">
+    <div class="flex items-center justify-between mb-6">
+      <h3 class="text-xl font-bold text-slate-800">Control de Agenda General</h3>
+      <a href="/appointments" class="text-sm font-semibold text-teal-600 hover:text-teal-700">Ver Calendario &rarr;</a>
+    </div>
+    
+    <div class="space-y-4">
+      {mockAppointments.map(app => (
+        <div class="flex items-center justify-between p-4 bg-white/40 border border-white/60 rounded-xl hover:bg-white/60 transition-colors">
+          <div class="flex items-center gap-4">
+            <div class="w-12 h-12 bg-teal-50 text-teal-700 rounded-xl flex items-center justify-center font-bold text-sm shadow-sm border border-teal-100">
+              {app.time.split(' ')[0]}
+            </div>
+            <div>
+              <h4 class="font-bold text-slate-800">{app.patient}</h4>
+              <p class="text-xs text-slate-500">{app.doctor} • Cita Médica</p>
+            </div>
+          </div>
+          <div>
+            <span class={`px-3 py-1 rounded-full text-xs font-semibold border ${
+              app.status === 'En Progreso' ? 'bg-sky-50 text-sky-700 border-sky-200' : 
+              app.status === 'Pendiente' ? 'bg-amber-50 text-amber-700 border-amber-200' :
+              'bg-rose-50 text-rose-700 border-rose-200'
+            }`}>
+              {app.status}
+            </span>
+          </div>
+        </div>
+      ))}
+    </div>
+  </div>
+
+  <div class="glass-card rounded-2xl p-6">
+    <h3 class="text-xl font-bold text-slate-800 mb-6">Accesos Logísticos</h3>
+    <div class="grid grid-cols-2 gap-4">
+      <a href="/appointments" class="flex flex-col items-center justify-center p-6 rounded-xl border border-white/40 bg-white/50 hover:bg-white hover:scale-105 transition-all shadow-sm group">
+        <div class="w-12 h-12 rounded-full bg-teal-100 text-teal-600 flex items-center justify-center mb-3 group-hover:bg-teal-500 group-hover:text-white transition-colors">
+          <svg class="w-6 h-6" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" set:html={ICONS.calendar}/>
+        </div>
+        <span class="font-semibold text-slate-700">Agendar Cita</span>
+      </a>
+      
+      <a href="/medications/add" class="flex flex-col items-center justify-center p-6 rounded-xl border border-white/40 bg-white/50 hover:bg-white hover:scale-105 transition-all shadow-sm group">
+        <div class="w-12 h-12 rounded-full bg-rose-100 text-rose-600 flex items-center justify-center mb-3 group-hover:bg-rose-500 group-hover:text-white transition-colors">
+          <svg class="w-6 h-6" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M12 2v20"/><path d="m14.5 4-5 5"/><path d="m14.5 9.5-5 5"/><path d="m14.5 15-5 5"/>
+          </svg>
+        </div>
+        <span class="font-semibold text-slate-700 text-center">Registrar Medicamento</span>
+      </a>
+
+      <a href="/medications" class="flex flex-col items-center justify-center p-6 rounded-xl border border-white/40 bg-white/50 hover:bg-white hover:scale-105 transition-all shadow-sm group col-span-2">
+        <div class="w-12 h-12 rounded-full bg-indigo-100 text-indigo-600 flex items-center justify-center mb-3 group-hover:bg-indigo-500 group-hover:text-white transition-colors">
+          <svg class="w-6 h-6" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" set:html={ICONS.inventory}/>
+        </div>
+        <span class="font-semibold text-slate-700">Supervisar Inventario</span>
+      </a>
+    </div>
+  </div>
+</div>

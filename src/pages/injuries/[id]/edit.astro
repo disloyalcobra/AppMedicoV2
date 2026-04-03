@@ -1,0 +1,145 @@
+---
+import Layout from '../../../layouts/Layout.astro';
+import { ROLES, checkRole } from '../../../functions/checkRole';
+import { db } from '../../../turso';
+
+const user = Astro.locals.user;
+if (!checkRole(user, [ROLES.DOCTOR, ROLES.JEFE_MEDICO, ROLES.ADMINISTRADOR])) {
+  return Astro.redirect('/403');
+}
+
+const { id } = Astro.params;
+
+const injRes = await db.execute({
+  sql: `SELECT i.*, p.patientId, u.firstName, u.lastName, p.isAthlete
+        FROM Injuries i
+        JOIN Patients p ON i.patientId = p.patientId
+        JOIN Users u ON p.patientId = u.userId
+        WHERE i.injuryId = ?`,
+  args: [id]
+});
+
+if (injRes.rows.length === 0) {
+  return Astro.redirect('/404');
+}
+
+const injury = injRes.rows[0];
+
+if (Astro.request.method === 'POST') {
+  const data = await Astro.request.formData();
+
+  const injuryType      = data.get('injuryType') as string;
+  const bodyZone        = data.get('bodyZone') as string;
+  const severity        = data.get('severity') as string;
+  const campusLocation  = data.get('campusLocation') as string;
+  const status          = data.get('status') as string;
+  const estimatedRecovery = data.get('estimatedRecovery') as string;
+  const treatment       = data.get('treatment') as string;
+  const observations    = data.get('observations') as string;
+
+  await db.execute({
+    sql: `UPDATE Injuries
+          SET injuryType = ?, bodyZone = ?, severity = ?, campusLocation = ?,
+              status = ?, estimatedRecovery = ?, treatment = ?, observations = ?
+          WHERE injuryId = ?`,
+    args: [injuryType, bodyZone, severity, campusLocation, status,
+           estimatedRecovery || null, treatment, observations, id]
+  });
+
+  return Astro.redirect(`/injuries/${id}`);
+}
+---
+
+<Layout title={`Editar Lesión: ${injury.injuryType}`}>
+  <div class="mb-8">
+    <div class="flex items-center gap-3 text-sm font-semibold text-slate-500 mb-2">
+      <a href="/injuries" class="hover:text-teal-600 transition-colors">Registro Global</a>
+      <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m9 18 6-6-6-6"/></svg>
+      <a href={`/injuries/${id}`} class="hover:text-teal-600 transition-colors">Detalles del Incidente</a>
+      <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m9 18 6-6-6-6"/></svg>
+      <span class="text-teal-700">Editar</span>
+    </div>
+    <h1 class="text-3xl font-bold text-slate-800 tracking-tight">Editar Lesión #{String(id).padStart(4, '0')}</h1>
+    <p class="text-slate-500 mt-1">Paciente: {injury.firstName} {injury.lastName}</p>
+  </div>
+
+  <form method="POST" class="max-w-3xl space-y-8">
+    <div class="glass-card rounded-2xl p-6">
+      <h2 class="text-lg font-bold text-slate-800 mb-5 border-b border-white/60 pb-3">Datos del Diagnóstico</h2>
+
+      <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+
+        <div>
+          <label class="block text-sm font-semibold text-slate-700 mb-1.5 ml-1">Tipo de Lesión</label>
+          <select name="injuryType" required class="w-full bg-white/50 border border-slate-200/60 rounded-xl px-4 py-3 text-slate-800 focus:outline-none focus:ring-2 focus:ring-teal-500 shadow-sm">
+            {['Esguince','Fractura','Desgarro','Contusión','Luxación','Otro'].map(t => (
+              <option value={t} selected={injury.injuryType === t}>{t}</option>
+            ))}
+          </select>
+        </div>
+
+        <div>
+          <label class="block text-sm font-semibold text-slate-700 mb-1.5 ml-1">Zona Afectada</label>
+          <input type="text" name="bodyZone" value={injury.bodyZone} required
+            placeholder="Ej: Tobillo Derecho"
+            class="w-full bg-white/50 border border-slate-200/60 rounded-xl px-4 py-3 text-slate-800 focus:outline-none focus:ring-2 focus:ring-teal-500 shadow-sm"/>
+        </div>
+
+        <div>
+          <label class="block text-sm font-semibold text-slate-700 mb-1.5 ml-1">Severidad</label>
+          <select name="severity" required class="w-full bg-white/50 border border-slate-200/60 rounded-xl px-4 py-3 text-slate-800 focus:outline-none focus:ring-2 focus:ring-teal-500 shadow-sm">
+            <option value="Leve" selected={injury.severity === 'Leve'}>Leve</option>
+            <option value="Moderada" selected={injury.severity === 'Moderada'}>Moderada</option>
+            <option value="Grave" selected={injury.severity === 'Grave'}>Grave</option>
+          </select>
+        </div>
+
+        <div>
+          <label class="block text-sm font-semibold text-slate-700 mb-1.5 ml-1">Campus / Ubicación</label>
+          <select name="campusLocation" required class="w-full bg-white/50 border border-slate-200/60 rounded-xl px-4 py-3 text-slate-800 focus:outline-none focus:ring-2 focus:ring-teal-500 shadow-sm">
+            {['Cancha de Futbol','Gimnasio','Alberca','Pista de Atletismo','Laboratorio','Aula','Área común','Fuera del campus','Otro'].map(c => (
+              <option value={c} selected={injury.campusLocation === c}>{c}</option>
+            ))}
+          </select>
+        </div>
+
+        <div>
+          <label class="block text-sm font-semibold text-slate-700 mb-1.5 ml-1">Estado Clínico</label>
+          <select name="status" class="w-full bg-white/50 border border-slate-200/60 rounded-xl px-4 py-3 text-slate-800 focus:outline-none focus:ring-2 focus:ring-teal-500 shadow-sm">
+            <option value="Activa" selected={injury.status === 'Activa'}>Activa</option>
+            <option value="En recuperación" selected={injury.status === 'En recuperación'}>En Recuperación</option>
+            <option value="Recuperada" selected={injury.status === 'Recuperada'}>Recuperada (Alta)</option>
+          </select>
+        </div>
+
+        <div>
+          <label class="block text-sm font-semibold text-slate-700 mb-1.5 ml-1">Recuperación Estimada</label>
+          <input type="date" name="estimatedRecovery"
+            value={String(injury.estimatedRecovery || '').split('T')[0]}
+            class="w-full bg-white/50 border border-slate-200/60 rounded-xl px-4 py-3 text-slate-800 focus:outline-none focus:ring-2 focus:ring-teal-500 shadow-sm"/>
+        </div>
+
+        <div class="md:col-span-2">
+          <label class="block text-sm font-semibold text-slate-700 mb-1.5 ml-1">Tratamiento Indicado</label>
+          <textarea name="treatment" rows="3"
+            placeholder="Describe el tratamiento, fisioterapia, reposo, etc."
+            class="w-full bg-white/50 border border-slate-200/60 rounded-xl px-4 py-3 text-slate-800 focus:outline-none focus:ring-2 focus:ring-teal-500 shadow-sm">{injury.treatment}</textarea>
+        </div>
+
+        <div class="md:col-span-2">
+          <label class="block text-sm font-semibold text-slate-700 mb-1.5 ml-1">Observaciones Médicas</label>
+          <textarea name="observations" rows="3"
+            placeholder="Notas clínicas adicionales..."
+            class="w-full bg-white/50 border border-slate-200/60 rounded-xl px-4 py-3 text-slate-800 focus:outline-none focus:ring-2 focus:ring-teal-500 shadow-sm">{injury.observations}</textarea>
+        </div>
+      </div>
+    </div>
+
+    <div class="flex justify-end gap-4">
+      <a href={`/injuries/${id}`} class="px-6 py-3 rounded-xl border border-slate-200 text-slate-600 font-semibold hover:bg-slate-50 transition-colors">Cancelar</a>
+      <button type="submit" class="px-8 py-3 bg-gradient-to-r from-teal-500 to-emerald-500 text-white font-bold rounded-xl shadow-md hover:shadow-lg transition-all active:scale-[0.98]">
+        Guardar Cambios
+      </button>
+    </div>
+  </form>
+</Layout>

@@ -1,0 +1,201 @@
+---
+import Layout from '../../../layouts/Layout.astro';
+import { ROLES, checkRole } from '../../../functions/checkRole';
+import { db } from '../../../turso';
+
+const user = Astro.locals.user;
+if (!checkRole(user, [ROLES.NUTRIOLOGO, ROLES.DOCTOR, ROLES.JEFE_MEDICO, ROLES.ESTUDIANTE])) {
+  return Astro.redirect('/403');
+}
+
+const { id } = Astro.params;
+
+const res = await db.execute({
+    sql: `SELECT pl.*, u.firstName, u.lastName, p.patientId, p.isAthlete 
+          FROM NutritionalPlans pl
+          JOIN Patients p ON pl.patientId = p.patientId
+          JOIN Users u ON p.patientId = u.userId
+          WHERE pl.planId = ?`,
+    args: [id]
+});
+
+if (res.rows.length === 0) {
+  return Astro.redirect('/404');
+}
+
+const plan = res.rows[0];
+
+// Buscar el profileId del perfil nutricional del paciente
+const profileRes = await db.execute({
+    sql: `SELECT profileId FROM NutritionalProfiles WHERE patientId = ? ORDER BY createdAt DESC LIMIT 1`,
+    args: [plan.patientId]
+});
+const profileId = profileRes.rows.length > 0 ? profileRes.rows[0].profileId : null;
+
+// Seguridad básica para que un estudiante solo vea su propio plan (si aplica el flow real)
+if (user.role === ROLES.ESTUDIANTE && user.userId !== plan.patientId) {
+    return Astro.redirect('/403');
+}
+
+// Historial de seguimientos asociados a este plan
+const followupsRes = await db.execute({
+    sql: `SELECT *
+          FROM NutritionalFollowUps 
+          WHERE planId = ? ORDER BY followUpDate DESC`,
+    args: [id]
+});
+const followups = followupsRes.rows;
+
+// Intentar parsear el menú semanal a formato JSON para renderizarlo bonito
+let parsedMenu: any = null;
+if (plan.weeklyMenu) {
+    try {
+        parsedMenu = JSON.parse(plan.weeklyMenu);
+    } catch (e) {
+        parsedMenu = null;
+    }
+}
+
+
+---
+
+<Layout title={`Plan Nutricional: ${plan.firstName} ${plan.lastName}`}>
+  <div class="mb-6 flex justify-between items-end">
+    <div>
+      {profileId ? (
+        <a href={`/nutrition/profiles/${profileId}`} class="text-teal-600 hover:text-teal-700 text-sm font-semibold flex items-center gap-1 mb-2">
+          <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m15 18-6-6 6-6"/></svg>
+          Volver a la Evaluación Inicial
+        </a>
+      ) : (
+        <a href="/nutrition/profiles" class="text-teal-600 hover:text-teal-700 text-sm font-semibold flex items-center gap-1 mb-2">
+          <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m15 18-6-6 6-6"/></svg>
+          Volver a Perfiles Nutricionales
+        </a>
+      )}
+      <div class="flex items-center gap-4">
+        <h1 class="text-3xl font-bold text-slate-800 tracking-tight">Plan Nutricional Activo</h1>
+        <span class={`px-3 py-1 rounded-full text-xs font-bold uppercase tracking-wider border ${
+            plan.patientAccepted === 1 ? 'bg-emerald-50 text-emerald-700 border-emerald-200' : 'bg-amber-50 text-amber-700 border-amber-200'
+        }`}>
+            {plan.patientAccepted === 1 ? 'Aceptado por Paciente' : 'Pendiente de Aceptación'}
+        </span>
+      </div>
+      <p class="text-slate-500 mt-1">Dictamen calórico y macronutrientes asignados al paciente {plan.firstName} {plan.lastName}</p>
+    </div>
+    
+    <div class="flex gap-3">
+        {user.role !== ROLES.ESTUDIANTE && (
+            <a href={`/nutrition/followups/add?planId=${plan.planId}`} class="px-5 py-2.5 bg-gradient-to-r from-sky-500 to-indigo-500 text-white font-semibold rounded-xl shadow-md hover:shadow-lg transition-all flex items-center gap-2">
+                <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="text-white"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
+                Registrar Seguimiento
+            </a>
+        )}
+    </div>
+  </div>
+
+  <div class="grid grid-cols-1 lg:grid-cols-3 gap-8">
+    
+    <div class="lg:col-span-2 space-y-6">
+        <div class="glass-card rounded-2xl p-6 bg-gradient-to-br from-amber-50/50 to-orange-50/50 border border-amber-100/50">
+            <h3 class="text-xl font-bold text-slate-800 border-b border-amber-100 pb-3 mb-6 flex items-center gap-2">
+                <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" class="text-amber-500" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2v2"/><path d="M2.5 12h2"/><path d="M19.5 12h2"/><path d="M12 20v2"/><path d="m4.9 4.9 1.4 1.4"/><path d="m17.7 17.7 1.4 1.4"/><path d="m17.7 4.9-1.4 1.4"/><path d="m6.3 17.7-1.4 1.4"/><path d="M12 22a9 9 0 0 0 9-9c0-4.97-4-9-9-9s-9 4.03-9 9a9 9 0 0 0 9 9Z"/></svg>
+                Prescripción Dietética
+            </h3>
+            
+             <div class="grid grid-cols-2 md:grid-cols-4 gap-4 mb-4 text-center">
+                 <div class="bg-white rounded-xl p-4 border border-amber-100 shadow-sm relative overflow-hidden">
+                    <div class="absolute inset-0 bg-amber-500/5"></div>
+                    <p class="text-[10px] text-slate-500 font-bold uppercase tracking-wider mb-2">Calorías Totales</p>
+                    <p class="font-bold text-amber-600 text-3xl">{plan.caloricRequirement}</p>
+                    <p class="text-xs text-slate-400 mt-1 font-semibold">kcal / día</p>
+                 </div>
+                 <div class="bg-white rounded-xl p-4 border border-sky-100 shadow-sm col-span-3 flex items-center justify-center">
+                    <div>
+                        <p class="text-[10px] text-slate-500 font-bold uppercase tracking-wider mb-2">Distribución de Macros</p>
+                        <p class="font-bold text-sky-700 text-xl">{plan.macrosDistribution}</p>
+                    </div>
+                 </div>
+            </div>
+
+            <h4 class="font-bold text-slate-700 mb-3 text-sm uppercase tracking-wider">Estructura del Menú Diario</h4>
+            {parsedMenu && typeof parsedMenu === 'object' ? (
+                <div class="space-y-4 mb-6">
+                    {Object.entries(parsedMenu).map(([day, meals]: any) => (
+                        <div class="bg-white rounded-xl border border-amber-100 overflow-hidden shadow-sm">
+                            <div class="bg-gradient-to-r from-amber-50 to-orange-50 px-4 py-2.5 border-b border-amber-100 flex items-center justify-between">
+                                <h5 class="font-bold text-amber-800 capitalize tracking-wide">{day}</h5>
+                            </div>
+                            <div class="p-4 space-y-3">
+                                {Object.entries(meals).map(([mealName, description]: any) => (
+                                    <div class="flex flex-col sm:flex-row sm:items-start gap-1 sm:gap-3">
+                                        <span class="text-[10px] font-bold px-2 py-1 rounded-md bg-slate-100 text-slate-500 uppercase w-24 shrink-0 text-center">{mealName}</span>
+                                        <p class="text-sm text-slate-600 font-medium py-0.5">{description}</p>
+                                    </div>
+                                ))}
+                            </div>
+                        </div>
+                    ))}
+                </div>
+            ) : (
+                <div class="bg-white/80 p-5 rounded-xl border border-amber-100 mb-6 font-mono text-sm whitespace-pre-wrap text-slate-700 leading-relaxed shadow-inner">
+{plan.weeklyMenu}
+                </div>
+            )}
+
+            <h4 class="font-bold text-slate-700 mb-2 text-sm uppercase tracking-wider">Recomendaciones Especiales y Suplementación</h4>
+            <div class="bg-white/80 p-4 rounded-xl border border-amber-100 text-slate-700 italic">
+                {plan.generalRecommendations || 'Sin recomendaciones adicionales.'}
+            </div>
+        </div>
+    </div>
+
+    <!-- Right Sidebar - History and Actions -->
+    <div class="lg:col-span-1 space-y-6">
+        <div class="glass-strong rounded-2xl p-6 border border-slate-200/60 sticky top-24">
+            <h3 class="font-bold text-slate-800 text-lg border-b border-slate-200 pb-3 mb-5 flex items-center justify-between">
+                <span>Historial de Seguimientos</span>
+                <span class="bg-sky-100 text-sky-800 text-xs font-bold px-2 py-0.5 rounded-full">{followups.length} Vistas</span>
+            </h3>
+            
+            <div class="space-y-4">
+                {followups.length === 0 ? (
+                    <div class="text-center py-6 text-slate-500 text-sm">
+                        Paciente sin consultas de seguimiento para este plan aún.
+                    </div>
+                ) : (
+                    followups.map((f: any) => (
+                        <div class="bg-white/60 border border-slate-100 rounded-xl p-4 hover:bg-white transition-colors shadow-sm">
+                            <div class="flex justify-between items-start mb-2">
+                                <span class="text-xs font-bold text-slate-400 font-mono">{String(f.followUpDate).split(' ')[0]}</span>
+                                <span class={`text-[10px] px-2 py-0.5 rounded-full font-bold uppercase border ${
+                                    f.compliancePercentage >= 80 ? 'bg-emerald-50 text-emerald-700 border-emerald-200' :
+                                    f.compliancePercentage >= 50 ? 'bg-amber-50 text-amber-700 border-amber-200' :
+                                    'bg-rose-50 text-rose-700 border-rose-200'
+                                }`}>
+                                    {f.compliancePercentage}% Cumplimiento
+                                </span>
+                            </div>
+                            <div class="grid grid-cols-2 gap-2 text-sm mb-3">
+                                <div><span class="text-slate-400 text-xs block">Peso</span> <span class="font-semibold text-slate-700">{f.currentWeight}kg</span></div>
+                                <div><span class="text-slate-400 text-xs block">IMC</span> <span class="font-semibold text-slate-700">{f.currentBmi}</span></div>
+                            </div>
+                            <p class="text-xs text-slate-600 line-clamp-2 italic">{f.adjustmentsMade}</p>
+                        </div>
+                    ))
+                )}
+            </div>
+
+            {user.role !== ROLES.ESTUDIANTE && (
+                <div class="mt-8 pt-6 border-t border-slate-200">
+                    <a href={`/nutrition/discharges/add?planId=${plan.planId}`} class="w-full px-4 py-3 bg-white border-2 border-slate-200 hover:border-emerald-300 hover:bg-emerald-50 text-slate-600 hover:text-emerald-700 font-bold rounded-xl transition-all flex justify-center items-center gap-2 group">
+                        <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="group-hover:text-emerald-500 transition-colors"><path d="M14 9l-5 5-2-2"/><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2z"/></svg>
+                        Dar de Alta al Paciente
+                    </a>
+                    <p class="text-xs text-center text-slate-400 mt-2">Cierra el ciclo nutricional actual o marca como abandono.</p>
+                </div>
+            )}
+        </div>
+    </div>
+  </div>
+</Layout>

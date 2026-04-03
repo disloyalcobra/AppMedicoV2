@@ -1,0 +1,106 @@
+---
+import StatsCard from './StatsCard.astro';
+import { db } from '../../turso';
+
+const { user } = Astro.props;
+
+const ICONS = {
+  users: '<path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M22 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/>',
+  calendar: '<rect width="18" height="18" x="3" y="4" rx="2" ry="2"/><line x1="16" x2="16" y1="2" y2="6"/><line x1="8" x2="8" y1="2" y2="6"/><line x1="3" x2="21" y1="10" y2="10"/><path d="M8 14h.01"/><path d="M12 14h.01"/><path d="M8 18h.01"/><path d="M12 18h.01"/>',
+  activity: '<polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/>',
+};
+
+// Datos reales de la DB para este doctor
+const patRes = await db.execute(`SELECT COUNT(*) as total FROM Patients`);
+const totalPatients = Number(patRes.rows[0].total);
+
+const aptsRes = await db.execute(`
+  SELECT
+    SUM(CASE WHEN date(dateTime) = date('now') THEN 1 ELSE 0 END) as today,
+    SUM(CASE WHEN date(dateTime) >= date('now', '-7 days') THEN 1 ELSE 0 END) as week
+  FROM Appointments WHERE doctorId = ?`, );
+// doctorId filter: use user.userId
+const aptsFiltered = await db.execute({
+  sql: `SELECT
+    SUM(CASE WHEN date(dateTime) = date('now') THEN 1 ELSE 0 END) as today,
+    SUM(CASE WHEN status = 'Pendiente' THEN 1 ELSE 0 END) as pending
+  FROM Appointments WHERE doctorId = ?`,
+  args: [user?.userId]
+});
+const aptsToday = Number(aptsFiltered.rows[0]?.today || 0);
+const aptsPending = Number(aptsFiltered.rows[0]?.pending || 0);
+
+const consRes = await db.execute(`
+  SELECT COUNT(*) as total FROM Consultations c
+  JOIN Appointments a ON c.appointmentId = a.appointmentId
+  WHERE a.doctorId = ?`, );
+const consFiltered = await db.execute({
+  sql: `SELECT COUNT(*) as total FROM Consultations c
+        JOIN Appointments a ON c.appointmentId = a.appointmentId
+        WHERE a.doctorId = ?`,
+  args: [user?.userId]
+});
+const totalConsultations = Number(consFiltered.rows[0]?.total || 0);
+
+// Citas de hoy para este doctor
+const todayAptsRes = await db.execute({
+  sql: `SELECT a.appointmentId as id, a.dateTime, a.status,
+               u.firstName || ' ' || u.lastName as patient
+        FROM Appointments a
+        JOIN Patients p ON a.patientId = p.patientId
+        JOIN Users u ON p.patientId = u.userId
+        WHERE a.doctorId = ? AND date(a.dateTime) = date('now')
+        ORDER BY a.dateTime ASC LIMIT 5`,
+  args: [user?.userId]
+});
+const todayApts = todayAptsRes.rows;
+---
+
+<div class="mb-8 flex justify-between items-end">
+  <div>
+    <h1 class="text-3xl font-bold text-slate-800 tracking-tight">Bienvenido, Dr. {user?.firstName}</h1>
+    <p class="text-slate-500 mt-1">Resumen clínico del día — {new Date().toLocaleDateString('es-MX', { weekday: 'long', day: 'numeric', month: 'long' })}</p>
+  </div>
+  <a href="/patients" class="px-5 py-2.5 bg-gradient-to-r from-teal-500 to-emerald-500 text-white font-semibold rounded-xl shadow hover:shadow-lg hover:-translate-y-0.5 transition-all">
+    Ver Expedientes
+  </a>
+</div>
+
+<div class="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
+  <StatsCard title="Pacientes en Sistema" value={totalPatients} icon={ICONS.users} colorClass="from-sky-500 to-indigo-500" href="/patients"/>
+  <StatsCard title="Citas Hoy" value={aptsToday} icon={ICONS.calendar} colorClass="from-emerald-500 to-teal-500" href="/appointments"/>
+  <StatsCard title="Consultas Realizadas" value={totalConsultations} icon={ICONS.activity} colorClass="from-amber-500 to-orange-500" href="/consultations"/>
+</div>
+
+<div class="glass-card rounded-2xl p-6">
+  <div class="flex items-center justify-between mb-6">
+    <h3 class="text-xl font-bold text-slate-800">Citas del Día</h3>
+    <a href="/appointments" class="text-sm font-semibold text-teal-600 hover:text-teal-700">Ver agenda completa →</a>
+  </div>
+  <div class="space-y-4">
+    {todayApts.length === 0 ? (
+      <div class="text-center py-10 text-slate-500">
+        <svg xmlns="http://www.w3.org/2000/svg" width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" class="mx-auto mb-3 text-slate-300"><rect width="18" height="18" x="3" y="4" rx="2" ry="2"/><line x1="16" x2="16" y1="2" y2="6"/><line x1="8" x2="8" y1="2" y2="6"/><line x1="3" x2="21" y1="10" y2="10"/></svg>
+        <p class="font-medium">No tienes citas programadas para hoy.</p>
+        <a href="/appointments/add" class="text-sm text-teal-600 hover:underline font-bold mt-1 inline-block">+ Agendar nueva cita</a>
+      </div>
+    ) : (
+      todayApts.map((app: any) => (
+        <a href={`/appointments/${app.id}`} class="flex items-center justify-between p-4 bg-white/40 border border-white/60 rounded-xl hover:bg-white/60 transition-colors group">
+          <div class="flex items-center gap-4">
+            <div class="w-12 h-12 bg-teal-50 text-teal-700 rounded-xl flex items-center justify-center font-bold text-sm shadow-sm border border-teal-100">
+              {String(app.dateTime).split('T')[1]?.slice(0,5) || '--:--'}
+            </div>
+            <div>
+              <h4 class="font-bold text-slate-800 group-hover:text-teal-700 transition-colors">{app.patient}</h4>
+              <p class="text-xs text-slate-500">Cita Médica</p>
+            </div>
+          </div>
+          <span class={`px-3 py-1 rounded-full text-xs font-semibold border ${app.status === 'Completada' ? 'bg-emerald-50 text-emerald-700 border-emerald-200' : app.status === 'Cancelada' ? 'bg-rose-50 text-rose-700 border-rose-200' : 'bg-amber-50 text-amber-700 border-amber-200'}`}>
+            {app.status}
+          </span>
+        </a>
+      ))
+    )}
+  </div>
+</div>

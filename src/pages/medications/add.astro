@@ -1,0 +1,51 @@
+---
+import Layout from '../../layouts/Layout.astro';
+import MedicationForm from '../../components/Medication/MedicationForm.astro';
+import { db } from '../../turso';
+import { ROLES, checkRole } from '../../functions/checkRole';
+
+const user = Astro.locals.user;
+if (!checkRole(user, [ROLES.DOCTOR, ROLES.STAFF, ROLES.ADMINISTRADOR])) {
+  return Astro.redirect('/403');
+}
+
+if (Astro.request.method === 'POST') {
+  const data = await Astro.request.formData();
+  
+  await db.execute({
+    sql: `INSERT INTO Medications (brandName, activeIngredient, presentation, currentStock, minimumStock)
+          VALUES (?, ?, ?, 0, ?)`,
+    args: [
+      data.get('brandName'),
+      data.get('activeIngredient'),
+      data.get('presentation'),
+      data.get('reorderPoint')
+    ]
+  });
+
+  return Astro.redirect('/medications');
+}
+---
+
+<Layout title="Nuevo Medicamento">
+  <div class="mb-8">
+    <div class="flex items-center gap-3 text-sm font-semibold text-slate-500 mb-2">
+      <a href="/medications" class="hover:text-teal-600 transition-colors">Inventario</a>
+      <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m9 18 6-6-6-6"/></svg>
+      <span class="text-teal-700">Añadir Producto</span>
+    </div>
+    <h1 class="text-3xl font-bold text-slate-800 tracking-tight">Registrar Nuevo Medicamento</h1>
+  </div>
+
+  <div class="max-w-3xl">
+    <div class="bg-teal-50 border border-teal-200 text-teal-800 px-4 py-3 rounded-xl text-sm mb-6 flex gap-3 shadow-sm">
+      <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="shrink-0 mt-0.5"><circle cx="12" cy="12" r="10"/><path d="M12 16v-4"/><path d="M12 8h.01"/></svg>
+      <div>
+        <p class="font-bold">Aviso sobre el Stock:</p>
+        <p class="mt-0.5 text-teal-700/80">Al crear un medicamento el stock inicial es 0. Para añadir existencias debes registrar un nuevo Lote en la opción de Entrada.</p>
+      </div>
+    </div>
+
+    <MedicationForm />
+  </div>
+</Layout>

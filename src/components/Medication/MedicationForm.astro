@@ -1,0 +1,44 @@
+---
+---
+
+<form method="POST" class="glass-card rounded-2xl p-6 space-y-6">
+  <div class="grid grid-cols-1 md:grid-cols-2 gap-5">
+    <div>
+      <label for="brandName" class="block text-sm font-semibold text-slate-700 mb-1.5">Nombre Comercial (Marca)</label>
+      <input type="text" name="brandName" id="brandName" class="w-full bg-white/50 border border-slate-200/60 rounded-xl px-4 py-2.5 text-slate-800 focus:outline-none focus:ring-2 focus:ring-teal-500" required placeholder="Ej. Tylenol 500mg" />
+    </div>
+    
+    <div>
+      <label for="activeIngredient" class="block text-sm font-semibold text-slate-700 mb-1.5">Ingrediente Activo</label>
+      <input type="text" name="activeIngredient" id="activeIngredient" class="w-full bg-white/50 border border-slate-200/60 rounded-xl px-4 py-2.5 text-slate-800 focus:outline-none focus:ring-2 focus:ring-teal-500" required placeholder="Ej. Paracetamol" />
+    </div>
+
+    <div>
+      <label for="presentation" class="block text-sm font-semibold text-slate-700 mb-1.5">Presentación</label>
+      <select name="presentation" id="presentation" class="w-full bg-white/50 border border-slate-200/60 rounded-xl px-4 py-2.5 text-slate-800 focus:outline-none focus:ring-2 focus:ring-teal-500" required>
+        <option value="">Seleccionar...</option>
+        <option value="Tabletas">Tabletas</option>
+        <option value="Cápsulas">Cápsulas</option>
+        <option value="Jarabe">Jarabe</option>
+        <option value="Suspensión">Suspensión</option>
+        <option value="Pomada">Pomada / Gel</option>
+        <option value="Inyectable">Inyectable</option>
+        <option value="Gotas">Gotas</option>
+        <option value="Supositorios">Supositorios</option>
+      </select>
+    </div>
+
+    <div>
+      <label for="reorderPoint" class="block text-sm font-semibold text-slate-700 mb-1.5">Punto de Reorden (Alerta Mínima) <span class="text-xs text-rose-500 ml-1 font-bold">importante</span></label>
+      <input type="number" name="reorderPoint" id="reorderPoint" class="w-full bg-white/50 border border-slate-200/60 rounded-xl px-4 py-2.5 text-slate-800 focus:outline-none focus:ring-2 focus:ring-teal-500" min="0" required placeholder="Ej. 20" />
+      <p class="text-xs text-slate-500 mt-1">El sistema alertará cuando el stock sea menor a este número.</p>
+    </div>
+  </div>
+
+  <div class="flex justify-end gap-3 pt-4 border-t border-slate-200/60">
+    <a href="/medications" class="px-5 py-2.5 bg-white/50 border border-slate-200 text-slate-700 font-semibold rounded-xl hover:bg-slate-50 transition-colors">Cancelar</a>
+    <button type="submit" class="px-6 py-2.5 bg-gradient-to-r from-teal-500 to-emerald-500 text-white font-semibold rounded-xl shadow-md hover:shadow-lg transition-all active:scale-[0.98]">
+      Guardar Medicamento
+    </button>
+  </div>
+</form>

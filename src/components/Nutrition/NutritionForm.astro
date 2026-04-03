@@ -1,0 +1,112 @@
+---
+---
+
+<form method="POST" class="space-y-6">
+  <div class="glass-card rounded-2xl p-6">
+    <h3 class="text-lg font-bold text-slate-800 mb-4 border-b border-white/60 pb-2 flex items-center gap-2">
+      <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="text-teal-600"><path d="M12 2v20"/><path d="m17 5-5-3-5 3v5a7 7 0 0 0 10 0V5z"/></svg>
+      Evaluación Antropométrica
+    </h3>
+    
+    <div class="grid grid-cols-1 md:grid-cols-4 gap-5">
+      <div>
+        <label for="waterConsumptionLiters" class="block text-sm font-semibold text-slate-700 mb-1.5">Agua (Litros/día)</label>
+        <input type="number" step="0.1" name="waterConsumptionLiters" id="waterConsumptionLiters" class="w-full bg-white/50 border border-slate-200/60 rounded-xl px-4 py-2.5 text-slate-800 focus:outline-none focus:ring-2 focus:ring-teal-500" required />
+      </div>
+      <div>
+        <label for="waistCircumference" class="block text-sm font-semibold text-slate-700 mb-1.5">Cintura (cm)</label>
+        <input type="number" step="0.1" name="waistCircumference" id="waistCircumference" class="w-full bg-white/50 border border-slate-200/60 rounded-xl px-4 py-2.5 text-slate-800 focus:outline-none focus:ring-2 focus:ring-teal-500" />
+      </div>
+      <div>
+        <label for="bodyFatPercentage" class="block text-sm font-semibold text-slate-700 mb-1.5">% Grasa Corporal</label>
+        <div class="relative">
+          <input type="number" step="0.1" name="bodyFatPercentage" id="bodyFatPercentage" class="w-full bg-white/50 border border-slate-200/60 rounded-xl px-4 py-2.5 text-slate-800 focus:outline-none focus:ring-2 focus:ring-teal-500" />
+          <span class="absolute right-3 top-2.5 text-slate-400 font-bold">%</span>
+        </div>
+      </div>
+      <div>
+        <label for="physicalActivityLevel" class="block text-sm font-semibold text-slate-700 mb-1.5">Actividad Física</label>
+        <select name="physicalActivityLevel" id="physicalActivityLevel" class="w-full bg-white/50 border border-slate-200/60 rounded-xl px-4 py-2.5 text-slate-800 focus:outline-none focus:ring-2 focus:ring-teal-500" required>
+          <option value="Sedentario">Sedentario</option>
+          <option value="Ligero">Ligero</option>
+          <option value="Moderado">Moderado</option>
+          <option value="Activo">Activo</option>
+          <option value="Muy Activo">Muy Activo</option>
+        </select>
+      </div>
+    </div>
+  </div>
+
+  <div class="glass-card rounded-2xl p-6">
+    <h3 class="text-lg font-bold text-slate-800 mb-4 border-b border-white/60 pb-2">Hábitos y Dieta</h3>
+    
+    <div class="grid grid-cols-1 md:grid-cols-2 gap-5 mb-5">
+      <div>
+        <label for="mealSchedule" class="block text-sm font-semibold text-slate-700 mb-1.5">Horarios de Comidas</label>
+        <input type="text" name="mealSchedule" id="mealSchedule" class="w-full bg-white/50 border border-slate-200/60 rounded-xl px-4 py-2.5 text-slate-800 focus:outline-none focus:ring-2 focus:ring-teal-500" placeholder="Ej. 8am, 2pm, 7pm" required />
+      </div>
+      <div>
+        <label for="familyHistory" class="block text-sm font-semibold text-slate-700 mb-1.5">Antecedentes Familiares (AHF)</label>
+        <input type="text" name="familyHistory" id="familyHistory" class="w-full bg-white/50 border border-slate-200/60 rounded-xl px-4 py-2.5 text-slate-800 focus:outline-none focus:ring-2 focus:ring-teal-500" placeholder="Ej. Diabetes, Hipertensión..." required />
+      </div>
+    </div>
+
+    <div class="space-y-5">
+      <div>
+        <label for="dietaryRecall24h" class="block text-sm font-semibold text-slate-700 mb-1.5">Recordatorio 24h</label>
+        <textarea name="dietaryRecall24h" id="dietaryRecall24h" rows="2" class="w-full bg-white/50 border border-slate-200/60 rounded-xl px-4 py-3 text-slate-800 focus:outline-none focus:ring-2 focus:ring-teal-500" placeholder="Desayuno, Comida, Cena... Detallar alimentos." required></textarea>
+      </div>
+      <div>
+        <label for="consumptionFrequency" class="block text-sm font-semibold text-slate-700 mb-1.5">Frecuencia de Consumo de Alimentos</label>
+        <textarea name="consumptionFrequency" id="consumptionFrequency" rows="2" class="w-full bg-white/50 border border-slate-200/60 rounded-xl px-4 py-3 text-slate-800 focus:outline-none focus:ring-2 focus:ring-teal-500" placeholder="Carne 3x/sem, Verduras diarias, Fruta ocasional..." required></textarea>
+      </div>
+      <div>
+        <label for="dietaryHabits" class="block text-sm font-semibold text-slate-700 mb-1.5">Hábitos y Preferencias</label>
+        <textarea name="dietaryHabits" id="dietaryHabits" rows="2" class="w-full bg-white/50 border border-slate-200/60 rounded-xl px-4 py-3 text-slate-800 focus:outline-none focus:ring-2 focus:ring-teal-500" placeholder="Ayuno intermitente, consumo de alcohol, intolerancias no clínicas..." required></textarea>
+      </div>
+    </div>
+  </div>
+
+  <div class="glass-card rounded-2xl p-6">
+    <h3 class="text-lg font-bold text-slate-800 mb-4 border-b border-white/60 pb-2">Diagnóstico y Plan</h3>
+    
+    <div class="grid grid-cols-1 md:grid-cols-2 gap-5 mb-5">
+      <div>
+        <label for="nutritionalDiagnosis" class="block text-sm font-semibold text-slate-700 mb-1.5">Diagnóstico Nutricional</label>
+        <select name="nutritionalDiagnosis" id="nutritionalDiagnosis" class="w-full bg-white/50 border border-slate-200/60 rounded-xl px-4 py-2.5 text-slate-800 focus:outline-none focus:ring-2 focus:ring-teal-500" required>
+          <option value="Normal">Normal</option>
+          <option value="Bajo peso">Bajo peso / Desnutrición</option>
+          <option value="Sobrepeso">Sobrepeso</option>
+          <option value="Obesidad">Obesidad (I, II, III)</option>
+        </select>
+      </div>
+      <div>
+        <label for="nutritionalObjective" class="block text-sm font-semibold text-slate-700 mb-1.5">Objetivo Principal</label>
+        <select name="nutritionalObjective" id="nutritionalObjective" class="w-full bg-white/50 border border-slate-200/60 rounded-xl px-4 py-2.5 text-slate-800 focus:outline-none focus:ring-2 focus:ring-teal-500" required>
+          <option value="Mantenimiento">Mantenimiento de peso saludable</option>
+          <option value="Aumento muscular">Aumento de masa muscular / Rendimiento</option>
+          <option value="Pérdida de grasa">Pérdida de porcentaje de grasa</option>
+          <option value="Asistencia médica">Apoyo por condición médica (Diabetes, Hipertensión...)</option>
+        </select>
+      </div>
+      <div>
+        <label for="metabolicRisk" class="block text-sm font-semibold text-slate-700 mb-1.5">Riesgo Metabólico</label>
+        <select name="metabolicRisk" id="metabolicRisk" class="w-full bg-white/50 border border-slate-200/60 rounded-xl px-4 py-2.5 text-slate-800 focus:outline-none focus:ring-2 focus:ring-teal-500" required>
+          <option value="Bajo">Bajo</option>
+          <option value="Moderado">Moderado</option>
+          <option value="Alto">Alto</option>
+        </select>
+      </div>
+    </div>
+
+    <div>
+      <label for="macrosDistribution" class="block text-sm font-semibold text-slate-700 mb-1.5">Distribución de Macros Recomendada (Opcional - para Plan Integral)</label>
+      <input type="text" name="macrosDistribution" id="macrosDistribution" class="w-full bg-white/50 border border-slate-200/60 rounded-xl px-4 py-2.5 text-slate-800 focus:outline-none focus:ring-2 focus:ring-teal-500" placeholder="Ej. 50% HCO, 25% PRO, 25% FAT - 2000 kcal" />
+    </div>
+  </div>
+
+  <div class="flex justify-end gap-3 pt-4">
+    <button type="button" onclick="history.back()" class="px-5 py-2.5 bg-white/50 border border-slate-200 text-slate-700 font-semibold rounded-xl hover:bg-slate-50 transition-colors">Cancelar</button>
+    <button type="submit" class="px-6 py-2.5 bg-gradient-to-r from-teal-500 to-emerald-500 text-white font-semibold rounded-xl shadow-md hover:shadow-lg transition-all active:scale-[0.98]">Guardar Perfil y Generar Plan</button>
+  </div>
+</form>

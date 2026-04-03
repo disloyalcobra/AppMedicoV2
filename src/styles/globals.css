@@ -1,0 +1,92 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  :root {
+    --background: #f0fdfa; /* Teal 50 */
+    --foreground: #0f172a; /* Slate 900 */
+    
+    --primary: #0d9488; /* Teal 600 */
+    --primary-foreground: #ffffff;
+    
+    --secondary: #0284c7; /* Sky 600 */
+    --secondary-foreground: #ffffff;
+    
+    --accent: #059669; /* Emerald 600 */
+    --accent-foreground: #ffffff;
+    
+    --destructive: #ef4444; /* Red 500 */
+    --destructive-foreground: #ffffff;
+    
+    --muted: #f1f5f9; /* Slate 100 */
+    --muted-foreground: #64748b; /* Slate 500 */
+    
+    --card: rgba(255, 255, 255, 0.7);
+    --card-foreground: #0f172a;
+    
+    --border: rgba(15, 23, 42, 0.1);
+    --input: rgba(15, 23, 42, 0.1);
+    --ring: #0d9488;
+    
+    --radius: 0.75rem;
+  }
+
+  body {
+    @apply bg-background text-foreground antialiased min-h-screen bg-gradient-to-br from-teal-50 via-sky-50 to-emerald-50;
+    font-feature-settings: "rlig" 1, "calt" 1;
+  }
+
+  html {
+    scroll-behavior: smooth;
+  }
+
+  ::-webkit-scrollbar {
+    width: 6px;
+    height: 6px;
+  }
+
+  ::-webkit-scrollbar-track {
+    background: transparent;
+  }
+
+  ::-webkit-scrollbar-thumb {
+    background: rgba(13, 148, 136, 0.3);
+    border-radius: 3px;
+  }
+
+  ::-webkit-scrollbar-thumb:hover {
+    background: rgba(13, 148, 136, 0.5);
+  }
+}
+
+@layer utilities {
+  .glass {
+    backdrop-filter: blur(16px);
+    background: rgba(255, 255, 255, 0.1);
+    border: 1px solid rgba(255, 255, 255, 0.2);
+  }
+
+  .glass-card {
+    backdrop-filter: blur(20px);
+    background: rgba(255, 255, 255, 0.6);
+    border: 1px solid rgba(255, 255, 255, 0.8);
+    box-shadow: 0 8px 32px rgba(13, 148, 136, 0.1);
+  }
+
+  .glass-strong {
+    backdrop-filter: blur(20px);
+    background: rgba(255, 255, 255, 0.85);
+    border: 1px solid rgba(255, 255, 255, 1);
+    box-shadow: 0 12px 40px rgba(13, 148, 136, 0.15);
+  }
+
+  .scrollbar-hide {
+    -ms-overflow-style: none;
+    scrollbar-width: none;
+  }
+
+  .scrollbar-hide::-webkit-scrollbar {
+    display: none;
+  }
+}

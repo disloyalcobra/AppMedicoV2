@@ -1,0 +1,40 @@
+---
+import Layout from '../layouts/Layout.astro';
+import { ROLES } from '../functions/checkRole';
+
+// Import dashboards
+import AdminDashboard from '../components/Dashboard/AdminDashboard.astro';
+import DoctorDashboard from '../components/Dashboard/DoctorDashboard.astro';
+import NutritionistDashboard from '../components/Dashboard/NutritionistDashboard.astro';
+import CoachDashboard from '../components/Dashboard/CoachDashboard.astro';
+import StudentDashboard from '../components/Dashboard/StudentDashboard.astro';
+import StaffDashboard from '../components/Dashboard/StaffDashboard.astro';
+
+const user = Astro.locals.user;
+
+// Redirect Staff and Student since they don't use the landing dashboard
+if (user?.roleId === ROLES.STAFF) {
+  return Astro.redirect('/medications');
+}
+if (user?.roleId === ROLES.ESTUDIANTE) {
+  return Astro.redirect('/mi-perfil');
+}
+---
+
+<Layout title="Dashboard Principal">
+  {user?.roleId === ROLES.ADMINISTRADOR || user?.roleId === ROLES.JEFE_MEDICO ? (
+    <AdminDashboard user={user} />
+  ) : user?.roleId === ROLES.DOCTOR ? (
+    <DoctorDashboard user={user} />
+  ) : user?.roleId === ROLES.NUTRIOLOGO ? (
+    <NutritionistDashboard user={user} />
+  ) : user?.roleId === ROLES.ENTRENADOR ? (
+    <CoachDashboard user={user} />
+  ) : user?.roleId === ROLES.ESTUDIANTE ? (
+    <StudentDashboard user={user} />
+  ) : user?.roleId === ROLES.STAFF ? (
+    <StaffDashboard user={user} />
+  ) : (
+    <div class="text-center py-20 text-slate-500">Rol no reconocido. Contacta al administrador.</div>
+  )}
+</Layout>

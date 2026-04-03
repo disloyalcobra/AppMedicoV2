@@ -1,0 +1,52 @@
+---
+import '../styles/globals.css';
+import SideBar from '../components/ui/sidebar/SideBar.astro';
+
+interface Props {
+  title: string;
+}
+
+const { title } = Astro.props;
+
+// Locals injectados por middleware.ts
+const user = Astro.locals.user || null;
+const currentPath = Astro.url.pathname;
+---
+
+<!DOCTYPE html>
+<html lang="es">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>{title} | MedApp</title>
+    <meta name="theme-color" content="#0d9488" />
+  </head>
+  <body class="min-h-screen bg-gradient-to-br from-teal-50 via-sky-50 to-emerald-50 text-slate-800 flex overflow-hidden">
+    <!-- Animated background blobs behind everything -->
+    <div class="fixed inset-0 opacity-[0.15] pointer-events-none z-0">
+      <div class="absolute top-0 left-0 w-[500px] h-[500px] bg-teal-400 rounded-full mix-blend-multiply filter blur-3xl animate-blob"></div>
+      <div class="absolute top-0 right-0 w-[500px] h-[500px] bg-emerald-400 rounded-full mix-blend-multiply filter blur-3xl animate-blob animation-delay-2000"></div>
+      <div class="absolute bottom-0 left-20 w-[600px] h-[600px] bg-sky-400 rounded-full mix-blend-multiply filter blur-3xl animate-blob animation-delay-4000"></div>
+    </div>
+
+    <!-- Sidebar component receives user data and the active path -->
+    <SideBar user={user} currentPath={currentPath} />
+
+    <!-- Main Content Area -->
+    <main class="flex-1 flex flex-col h-screen overflow-hidden relative z-10">
+      <header class="h-16 glass border-b border-white/40 flex items-center px-8 shadow-sm justify-between shrink-0">
+        <h2 class="text-xl font-semibold text-slate-800 tracking-tight">{title}</h2>
+        <div class="text-sm font-medium px-3 py-1 bg-white/50 rounded-full border border-teal-100 text-teal-800 shadow-sm flex items-center gap-2">
+          <div class="w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></div>
+          Sistema Activo
+        </div>
+      </header>
+      
+      <div class="flex-1 overflow-y-auto p-8 scrollbar-hide">
+        <div class="max-w-7xl mx-auto pb-12 animate-fade-in">
+          <slot />
+        </div>
+      </div>
+    </main>
+  </body>
+</html>

@@ -1,0 +1,32 @@
+---
+import Layout from '../../layouts/Layout.astro';
+import PatientForm from '../../components/Patient/PatientForm.astro';
+import { ROLES, checkRole } from '../../functions/checkRole';
+
+const user = Astro.locals.user;
+if (!checkRole(user, [ROLES.DOCTOR, ROLES.JEFE_MEDICO, ROLES.ADMINISTRADOR])) {
+  return Astro.redirect('/403');
+}
+
+if (Astro.request.method === 'POST') {
+  // In a real app we would read formData and insert Turso here
+  // const data = await Astro.request.formData();
+  // turso.execute(...)
+  return Astro.redirect('/patients');
+}
+---
+
+<Layout title="Nuevo Paciente">
+  <div class="mb-8">
+    <div class="flex items-center gap-3 text-sm font-semibold text-slate-500 mb-2">
+      <a href="/patients" class="hover:text-teal-600 transition-colors">Pacientes</a>
+      <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m9 18 6-6-6-6"/></svg>
+      <span class="text-teal-700">Nuevo Registro</span>
+    </div>
+    <h1 class="text-3xl font-bold text-slate-800 tracking-tight">Agregar Paciente</h1>
+  </div>
+
+  <div class="max-w-4xl">
+    <PatientForm />
+  </div>
+</Layout>

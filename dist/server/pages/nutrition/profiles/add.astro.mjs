@@ -1,0 +1,87 @@
+/* empty css                                     */
+import { e as createComponent, k as renderComponent, r as renderTemplate, h as createAstro, m as maybeRenderHead, g as addAttribute } from '../../../chunks/astro/server_DBbqSsVa.mjs';
+import 'piccolore';
+import { $ as $$Layout } from '../../../chunks/Layout_DrfESANN.mjs';
+import { c as checkRole, R as ROLES } from '../../../chunks/checkRole_wmyz_iGO.mjs';
+import { d as db } from '../../../chunks/turso_YhtWwx2k.mjs';
+export { renderers } from '../../../renderers.mjs';
+
+const $$Astro = createAstro();
+const $$Add = createComponent(async ($$result, $$props, $$slots) => {
+  const Astro2 = $$result.createAstro($$Astro, $$props, $$slots);
+  Astro2.self = $$Add;
+  const user = Astro2.locals.user;
+  if (!checkRole(user, [ROLES.NUTRIOLOGO, ROLES.DOCTOR, ROLES.JEFE_MEDICO])) {
+    return Astro2.redirect("/403");
+  }
+  const url = Astro2.url;
+  const patientId = url.searchParams.get("patientId");
+  let patients = [];
+  let targetPatient = null;
+  if (patientId) {
+    const pRes = await db.execute({
+      sql: `SELECT patientId, firstName, lastName, isAthlete, sport FROM Patients JOIN Users ON Patients.patientId = Users.userId WHERE patientId = ?`,
+      args: [patientId]
+    });
+    targetPatient = pRes.rows[0];
+  } else {
+    const pRes = await db.execute(`
+        SELECT p.patientId, u.firstName, u.lastName 
+        FROM Patients p JOIN Users u ON p.patientId = u.userId 
+        WHERE p.patientId NOT IN (SELECT patientId FROM NutritionalProfiles)
+    `);
+    patients = pRes.rows;
+    if (patients.length === 0) {
+      return Astro2.redirect("/nutrition/profiles");
+    }
+  }
+  if (Astro2.request.method === "POST") {
+    const data = await Astro2.request.formData();
+    const finalPatientId = patientId || data.get("patientId");
+    await db.execute({
+      sql: `INSERT INTO NutritionalProfiles (
+            patientId, waistCircumference, bodyFatPercentage, physicalActivityLevel, 
+            familyHistory, dietaryRecall24h, consumptionFrequency, dietaryHabits, 
+            mealSchedule, waterConsumptionLiters, nutritionalDiagnosis, metabolicRisk, nutritionalObjective
+          ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      args: [
+        finalPatientId,
+        data.get("waistCircumference"),
+        data.get("bodyFatPercentage"),
+        data.get("physicalActivityLevel"),
+        data.get("familyHistory"),
+        data.get("dietaryRecall24h"),
+        data.get("consumptionFrequency"),
+        data.get("dietaryHabits"),
+        data.get("mealSchedule"),
+        data.get("waterConsumptionLiters"),
+        data.get("nutritionalDiagnosis"),
+        data.get("metabolicRisk"),
+        data.get("nutritionalObjective")
+      ]
+    });
+    const newProf = await db.execute({
+      sql: `SELECT profileId FROM NutritionalProfiles WHERE patientId = ?`,
+      args: [finalPatientId]
+    });
+    return Astro2.redirect(`/nutrition/profiles/${newProf.rows[0].profileId}`);
+  }
+  return renderTemplate`${renderComponent($$result, "Layout", $$Layout, { "title": "Generar Evaluaci\xF3n Nutricional" }, { "default": async ($$result2) => renderTemplate` ${maybeRenderHead()}<div class="mb-8"> <div class="flex items-center gap-3 text-sm font-semibold text-slate-500 mb-2"> <a href="/nutrition/profiles" class="hover:text-teal-600 transition-colors">Volver a Perfiles</a> <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m9 18 6-6-6-6"></path></svg> <span class="text-teal-700">Nueva Evaluación</span> </div> <div class="flex items-center justify-between"> <h1 class="text-3xl font-bold text-slate-800 tracking-tight">Evaluación Nutricional Inicial</h1> </div> </div> <form method="POST" class="max-w-4xl space-y-6"> <div class="glass-card rounded-2xl p-6 mb-6"> <h3 class="text-lg font-bold text-slate-800 border-b border-white/60 pb-2 mb-6">Paciente a Evaluar</h3> ${targetPatient ? renderTemplate`<div class="w-full bg-slate-100 border border-slate-200/60 rounded-xl px-4 py-3 text-slate-800 font-semibold shadow-sm text-sm flex items-center gap-2"> ${targetPatient.firstName} ${targetPatient.lastName} ${targetPatient.isAthlete === 1 && renderTemplate`<span class="bg-amber-100 text-amber-800 text-[10px] sm:text-xs font-bold px-2 py-0.5 rounded-full border border-amber-200 uppercase tracking-widest">
+Atleta: ${targetPatient.sport} </span>`} </div>` : renderTemplate`<select name="patientId" required class="w-full bg-white/50 border border-slate-200/60 rounded-xl px-4 py-3 text-slate-800 focus:outline-none focus:ring-2 focus:ring-teal-500 shadow-sm"> <option value="">Seleccione un paciente sin evaluación...</option> ${patients.map((p) => renderTemplate`<option${addAttribute(p.patientId, "value")}>${p.firstName} ${p.lastName}</option>`)} </select>`} </div> <div class="glass-card rounded-2xl p-6"> <h3 class="text-lg font-bold text-slate-800 border-b border-white/60 pb-2 mb-6">Datos Antropométricos</h3> <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-5"> <div> <label class="block text-sm font-semibold text-slate-700 mb-1.5 ml-1">Circunferencia Cinta (cm)</label> <input type="number" step="0.1" name="waistCircumference" class="w-full bg-white/50 border border-slate-200/60 rounded-xl px-4 py-2.5 text-slate-800 focus:outline-none focus:ring-2 focus:ring-teal-500"> </div> <div> <label class="block text-sm font-semibold text-slate-700 mb-1.5 ml-1">% Grasa Corporal</label> <input type="number" step="0.1" name="bodyFatPercentage" class="w-full bg-white/50 border border-slate-200/60 rounded-xl px-4 py-2.5 text-slate-800 focus:outline-none focus:ring-2 focus:ring-teal-500"> </div> <div class="lg:col-span-2"> <label class="block text-sm font-semibold text-slate-700 mb-1.5 ml-1">Nivel de Actividad Física</label> <select name="physicalActivityLevel" class="w-full bg-white/50 border border-slate-200/60 rounded-xl px-4 py-2.5 text-slate-800 focus:outline-none focus:ring-2 focus:ring-teal-500" required> <option value="Sedentario">Sedentario</option> <option value="Poco activo">Poco activo</option> <option value="Moderadamente activo">Moderadamente activo</option> <option value="Muy activo">Muy activo (Deportista)</option> </select> </div> </div> </div> <div class="glass-card rounded-2xl p-6"> <h3 class="text-lg font-bold text-slate-800 border-b border-white/60 pb-2 mb-6">Anamnesis Nutricional</h3> <div class="space-y-5"> <div> <label class="block text-sm font-semibold text-slate-700 mb-1.5 ml-1">Antecedentes Familiares Importantes</label> <textarea name="familyHistory" rows="2" class="w-full bg-white/50 border border-slate-200/60 rounded-xl px-4 py-2 text-slate-800 focus:outline-none focus:ring-2 focus:ring-teal-500" placeholder="Ej. Diabetes tipo 2 por parte materna..."></textarea> </div> <div class="grid grid-cols-1 md:grid-cols-2 gap-5"> <div> <label class="block text-sm font-semibold text-slate-700 mb-1.5 ml-1">Frecuencia de Consumo</label> <textarea name="consumptionFrequency" rows="3" class="w-full bg-white/50 border border-slate-200/60 rounded-xl px-4 py-2 text-slate-800 focus:outline-none focus:ring-2 focus:ring-teal-500"></textarea> </div> <div> <label class="block text-sm font-semibold text-slate-700 mb-1.5 ml-1">Hábitos Alimenticios Cuestionables</label> <textarea name="dietaryHabits" rows="3" class="w-full bg-white/50 border border-slate-200/60 rounded-xl px-4 py-2 text-slate-800 focus:outline-none focus:ring-2 focus:ring-teal-500"></textarea> </div> </div> <div> <label class="block text-sm font-semibold text-slate-700 mb-1.5 ml-1">Recordatorio 24 Horas Libre</label> <textarea name="dietaryRecall24h" rows="3" class="w-full bg-white/50 border border-slate-200/60 rounded-xl px-4 py-2 text-slate-800 focus:outline-none focus:ring-2 focus:ring-teal-500" placeholder="Describa todo lo que el paciente comió ayer..."></textarea> </div> <div class="grid grid-cols-1 md:grid-cols-2 gap-5"> <div> <label class="block text-sm font-semibold text-slate-700 mb-1.5 ml-1">Horario de Comidas Preferido</label> <input type="text" name="mealSchedule" placeholder="Ej. 8:00am desayuno, 3pm comida" class="w-full bg-white/50 border border-slate-200/60 rounded-xl px-4 py-2.5 text-slate-800 focus:outline-none focus:ring-2 focus:ring-teal-500"> </div> <div> <label class="block text-sm font-semibold text-slate-700 mb-1.5 ml-1">Consumo de Agua Diario (Litros)</label> <input type="number" step="0.5" name="waterConsumptionLiters" placeholder="Ej. 2.5" class="w-full bg-white/50 border border-slate-200/60 rounded-xl px-4 py-2.5 text-slate-800 focus:outline-none focus:ring-2 focus:ring-teal-500"> </div> </div> </div> </div> <div class="glass-card rounded-2xl p-6 bg-gradient-to-br from-indigo-50/50 to-teal-50/50 border border-teal-100"> <h3 class="text-lg font-bold text-slate-800 border-b border-teal-100 pb-2 mb-6">Diagnóstico y Metas</h3> <div class="grid grid-cols-1 md:grid-cols-2 gap-5 mb-5"> <div> <label class="block text-sm font-semibold text-slate-700 mb-1.5 ml-1">Diagnóstico Nutricional</label> <select name="nutritionalDiagnosis" class="w-full bg-white/50 border border-slate-200/60 rounded-xl px-4 py-2.5 text-slate-800 focus:outline-none focus:ring-2 focus:ring-teal-500" required> <option value="Normal">Peso Normal / Saludable</option> <option value="Bajo peso">Bajo Peso</option> <option value="Sobrepeso">Sobrepeso</option> <option value="Obesidad">Obesidad</option> </select> </div> <div> <label class="block text-sm font-semibold text-slate-700 mb-1.5 ml-1">Riesgo Metabólico Calculado</label> <select name="metabolicRisk" class="w-full bg-white/50 border border-slate-200/60 rounded-xl px-4 py-2.5 text-slate-800 focus:outline-none focus:ring-2 focus:ring-teal-500" required> <option value="Bajo">Bajo</option> <option value="Moderado">Moderado</option> <option value="Alto">Alto</option> </select> </div> </div> <div> <label class="block text-sm font-semibold text-slate-700 mb-1.5 ml-1">Objetivo Nutricional / Metas a lograr</label> <input type="text" name="nutritionalObjective" class="w-full bg-white/50 border border-slate-200/60 rounded-xl px-4 py-2.5 text-slate-800 focus:outline-none focus:ring-2 focus:ring-teal-500 font-semibold" placeholder="Ej. Ganar 2kg de masa muscular para competencia..." required> </div> </div> <div class="flex justify-end gap-3 pt-4"> <a href="/nutrition/profiles" class="px-5 py-2.5 bg-white/50 border border-slate-200 text-slate-700 font-semibold rounded-xl hover:bg-slate-50 transition-colors">Cancelar</a> <button type="submit" class="px-8 py-2.5 bg-gradient-to-r from-teal-500 to-emerald-500 text-white font-bold text-lg rounded-xl shadow-md hover:shadow-lg transition-all active:scale-[0.98]">
+Guardar Evaluación
+</button> </div> </form> ` })}`;
+}, "C:/claude-projects/AppMedicoV2/src/pages/nutrition/profiles/add.astro", void 0);
+
+const $$file = "C:/claude-projects/AppMedicoV2/src/pages/nutrition/profiles/add.astro";
+const $$url = "/nutrition/profiles/add";
+
+const _page = /*#__PURE__*/Object.freeze(/*#__PURE__*/Object.defineProperty({
+  __proto__: null,
+  default: $$Add,
+  file: $$file,
+  url: $$url
+}, Symbol.toStringTag, { value: 'Module' }));
+
+const page = () => _page;
+
+export { page };

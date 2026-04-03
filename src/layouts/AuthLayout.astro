@@ -1,0 +1,31 @@
+---
+import '../styles/globals.css';
+
+interface Props {
+  title: string;
+}
+
+const { title } = Astro.props;
+---
+
+<!DOCTYPE html>
+<html lang="es">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>{title} | MedApp</title>
+    <!-- Medical Theme Colors -->
+    <meta name="theme-color" content="#0d9488" />
+  </head>
+  <body class="min-h-screen bg-gradient-to-br from-teal-50 via-sky-50 to-emerald-50 text-slate-800">
+    <div class="fixed inset-0 opacity-30 pointer-events-none">
+      <div class="absolute top-0 left-0 w-72 h-72 bg-teal-300 rounded-full mix-blend-multiply filter blur-xl animate-blob"></div>
+      <div class="absolute top-0 right-0 w-72 h-72 bg-emerald-300 rounded-full mix-blend-multiply filter blur-xl animate-blob animation-delay-2000"></div>
+      <div class="absolute bottom-0 left-0 w-72 h-72 bg-sky-300 rounded-full mix-blend-multiply filter blur-xl animate-blob animation-delay-4000"></div>
+    </div>
+    
+    <main class="relative z-10 w-full min-h-screen flex items-center justify-center p-4">
+      <slot />
+    </main>
+  </body>
+</html>

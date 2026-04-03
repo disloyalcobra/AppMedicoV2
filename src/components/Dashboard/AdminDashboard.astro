@@ -1,0 +1,125 @@
+---
+import StatsCard from './StatsCard.astro';
+import AlertBanner from './AlertBanner.astro';
+import { db } from '../../turso';
+
+const { user } = Astro.props;
+
+const ICONS = {
+  users: '<path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M22 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/>',
+  calendar: '<rect width="18" height="18" x="3" y="4" rx="2" ry="2"/><line x1="16" x2="16" y1="2" y2="6"/><line x1="8" x2="8" y1="2" y2="6"/><line x1="3" x2="21" y1="10" y2="10"/><path d="M8 14h.01"/><path d="M12 14h.01"/><path d="M16 14h.01"/><path d="M8 18h.01"/><path d="M12 18h.01"/><path d="M16 18h.01"/>',
+  activity: '<polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/>',
+  alert: '<circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/>'
+};
+
+// 1. Pacientes Totales
+const patRes = await db.execute(`SELECT COUNT(*) as total FROM Patients`);
+const totalPatients = Number(patRes.rows[0].total);
+
+// 2. Citas Hoy y Consultas Semanales
+const aptsRes = await db.execute(`
+    SELECT 
+        SUM(CASE WHEN date(dateTime) = date('now') THEN 1 ELSE 0 END) as today,
+        SUM(CASE WHEN date(dateTime) >= date('now', '-7 days') THEN 1 ELSE 0 END) as week
+    FROM Appointments
+`);
+const aptsToday = Number(aptsRes.rows[0].today || 0);
+const aptsWeek = Number(aptsRes.rows[0].week || 0);
+
+// 3. Alertas Activas (Lesiones Activas + Stock Crítico + Notas de Alerta de los últimos 3 días)
+const alertsRes = await db.execute(`
+    SELECT
+      (SELECT COUNT(*) FROM Injuries WHERE status = 'Activa') +
+      (SELECT COUNT(*) FROM Medications WHERE currentStock <= reorderPoint) +
+      (SELECT COUNT(*) FROM CollaborativeNotes WHERE isAlert = 1 AND date(createdAt) >= date('now', '-3 days')) as total
+`);
+const activeAlerts = Number(alertsRes.rows[0].total);
+
+// 4. Doctores Totales
+const docsRes = await db.execute(`SELECT COUNT(*) as total FROM Users WHERE roleId = 3`);
+const activeDoctors = Number(docsRes.rows[0].total);
+
+const stats = [
+  { title: 'Pacientes Totales', value: totalPatients, icon: ICONS.users, trend: 'Global', href: '/patients' },
+  { title: 'Citas Hoy', value: aptsToday, icon: ICONS.calendar, color: 'from-sky-500 to-indigo-500', href: '/appointments' },
+  { title: 'Citas Semanales', value: aptsWeek, icon: ICONS.activity, color: 'from-emerald-500 to-teal-500', href: '/appointments' },
+  { title: 'Alertas Activas', value: activeAlerts, icon: ICONS.alert, color: 'from-rose-500 to-pink-500', href: '/injuries' }
+];
+
+let alerts: any[] = [];
+if (activeAlerts > 0) {
+    alerts.push({ type: 'stock', message: `Sistema reporta ${activeAlerts} alertas globales prioritarias activas hoy.`, link: '/injuries' });
+}
+
+// 4. Últimas citas globales
+const mockRes = await db.execute(`
+  SELECT a.appointmentId as id, a.dateTime, a.status,
+         u.firstName || ' ' || u.lastName as patient,
+         ud.lastName as doctor
+  FROM Appointments a
+  JOIN Patients p ON a.patientId = p.patientId
+  JOIN Users u ON p.patientId = u.userId
+  JOIN Users ud ON a.doctorId = ud.userId
+  ORDER BY a.dateTime DESC LIMIT 4
+`);
+
+const mockAppointments = mockRes.rows.map(r => ({
+  id: r.id,
+  time: new Date(r.dateTime as string).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: true }),
+  doctor: `Dr. ${r.doctor}`,
+  patient: r.patient,
+  status: r.status
+}));
+---
+
+<div class="mb-8">
+  <h1 class="text-3xl font-bold text-slate-800 tracking-tight">Panel Administrativo Global</h1>
+  <p class="text-slate-500 mt-1 text-lg">Visión general del sistema para {user?.roleId === 1 ? 'Administrador' : 'Jefatura Médica'}</p>
+</div>
+
+<AlertBanner alerts={alerts} />
+
+<div class="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-6 mb-8">
+  {stats.map(stat => (
+    <StatsCard 
+      title={stat.title}
+      value={stat.value}
+      icon={stat.icon}
+      trendLabel={stat.trend}
+      colorClass={stat.color}
+      href={stat.href}
+    />
+  ))}
+</div>
+
+<div class="glass-card rounded-2xl p-6">
+  <div class="flex items-center justify-between mb-6">
+    <h3 class="text-xl font-bold text-slate-800">Citas Recientes (Global)</h3>
+    <a href="/appointments" class="text-sm font-semibold text-teal-600 hover:text-teal-700">Ver agenda global →</a>
+  </div>
+  
+  <div class="space-y-4">
+    {mockAppointments.map(app => (
+      <a href={`/appointments/${app.id}`} class="flex items-center justify-between p-4 bg-white/40 border border-white/60 rounded-xl hover:bg-white/60 transition-colors block group">
+        <div class="flex items-center gap-4">
+          <div class="w-12 h-12 bg-teal-50 text-teal-700 rounded-xl flex items-center justify-center font-bold text-sm shadow-sm border border-teal-100 group-hover:scale-105 transition-transform">
+            {app.time.split(' ')[0]}
+          </div>
+          <div>
+            <h4 class="font-bold text-slate-800 group-hover:text-teal-700 transition-colors">{app.patient}</h4>
+            <p class="text-xs text-slate-500">{app.doctor} • Cita Médica</p>
+          </div>
+        </div>
+        <div>
+          <span class={`px-3 py-1 rounded-full text-xs font-semibold border ${
+            app.status === 'En Progreso' 
+              ? 'bg-sky-50 text-sky-700 border-sky-200' 
+              : 'bg-amber-50 text-amber-700 border-amber-200'
+          }`}>
+            {app.status}
+          </span>
+        </div>
+      </a>
+    ))}
+  </div>
+</div>
