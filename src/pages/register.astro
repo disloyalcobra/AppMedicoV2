@@ -13,7 +13,7 @@ let success = '';
 
 if (Astro.request.method === 'POST') {
   try {
-    const _data = await Astro.request.formData();
+    await Astro.request.formData();
     // In a real app, you would insert into Turso here
     success = 'Usuario registrado exitosamente (Mock).';
   } catch (e) {

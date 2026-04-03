@@ -51,7 +51,7 @@ if (Astro.request.method === 'POST') {
             planId, consultationId, followUpDate, currentWeight, currentBmi, compliancePercentage, adjustmentsMade, bodyMeasurements, newGoals
           ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     args: [
-      finalPlanId,
+      String(finalPlanId),
       1, // Fallback safe ID for consultation context
       date,
       data.get('currentWeight') as string,

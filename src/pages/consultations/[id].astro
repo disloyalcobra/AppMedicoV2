@@ -27,7 +27,7 @@ const consRes = await db.execute({
         JOIN Users u ON p.patientId = u.userId
         JOIN Users ud ON a.doctorId = ud.userId
         WHERE c.consultationId = ?`,
-  args: [id]
+  args: [String(id)]
 });
 
 if (consRes.rows.length === 0) {
@@ -48,7 +48,7 @@ const presRes = await db.execute({
         FROM Prescriptions pr
         JOIN Medications m ON pr.medicationId = m.medicationId
         WHERE pr.consultationId = ?`,
-  args: [id]
+  args: [String(id)]
 });
 const prescriptions = presRes.rows;
 
@@ -63,7 +63,7 @@ if (Astro.request.method === 'POST') {
 
     await db.execute({
       sql: `UPDATE Consultations SET symptoms = ?, diagnosis = ? WHERE consultationId = ?`,
-      args: [symptoms, diagnosis, id]
+      args: [symptoms, diagnosis, String(id)]
     });
   }
 
@@ -101,7 +101,7 @@ if (Astro.request.method === 'POST') {
           {String(cons.consultationDate).split('T')[0]}
         </span>
         {isDoctorOrAdmin && (
-          <a href={`/prescriptions/add?consultationId=${id}&patientId=${cons.patientId}`}
+          <a href={`/prescriptions/add?consultationId=${String(id)}&patientId=${String(cons.patientId)}`}
             class="px-4 py-2 bg-gradient-to-r from-indigo-500 to-violet-500 text-white font-semibold rounded-xl shadow-sm hover:shadow-md transition-all flex items-center gap-1.5 text-sm">
             <svg xmlns="http://www.w3.org/2000/svg" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
             Añadir Receta

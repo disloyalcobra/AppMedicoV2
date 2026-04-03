@@ -58,7 +58,7 @@ if (Astro.request.method === 'POST') {
             planId, dischargeDate, dischargeReason, targetWeightAchieved, treatmentDurationDays, maintenanceRecommendations, goalReached
           ) VALUES (?, ?, ?, ?, ?, ?, ?)`,
     args: [
-      finalPlanId,
+      String(finalPlanId),
       date,
       data.get('reason') as string,
       data.get('targetWeightAchieved') as string,

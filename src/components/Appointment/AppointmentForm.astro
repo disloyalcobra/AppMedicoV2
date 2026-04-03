@@ -79,7 +79,7 @@ if (Astro.request.method === 'POST') {
         {lockedPatientId ? (
           <>
             <div class="w-full bg-slate-100 border border-slate-200/60 rounded-xl px-4 py-2.5 text-slate-800 font-semibold shadow-sm cursor-not-allowed">
-              {patients.find((p: any) => p.patientId.toString() === lockedPatientId)?.firstName} {patients.find((p: any) => p.patientId.toString() === lockedPatientId)?.lastName} (Exp. #{String(lockedPatientId).padStart(4, '0')})
+              {patients.find((p: any) => String(p.patientId) === lockedPatientId)?.firstName} {patients.find((p: any) => String(p.patientId) === lockedPatientId)?.lastName} (Exp. #{String(lockedPatientId).padStart(4, '0')})
             </div>
             <input type="hidden" name="patientId" value={lockedPatientId} />
           </>
