@@ -17,7 +17,7 @@ const res = await db.execute({
         JOIN Patients p ON np.patientId = p.patientId
         JOIN Users u ON p.patientId = u.userId
         WHERE np.profileId = ?`,
-  args: [id]
+  args: [String(id)]
 });
 
 if (res.rows.length === 0) {

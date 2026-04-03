@@ -55,11 +55,11 @@ if (Astro.request.method === 'POST') {
     args: [
       finalPatientId,
       nutritionistId,
-      data.get('caloricRequirement'),
+      data.get('caloricRequirement') as string,
       macrosDistribution,
-      data.get('weeklyMenu'),
+      data.get('weeklyMenu') as string,
       '', 
-      data.get('generalRecommendations')
+      data.get('generalRecommendations') as string
     ]
   });
 

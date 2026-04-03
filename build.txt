@@ -1,0 +1,47 @@
+﻿[2m13:23:05[22m [34m[@astrojs/node][39m Enabling sessions with filesystem storage
+[33m[1m13:23:05[22m [WARN] [router][39m The route "/patients/[id]" is defined in both "src/pages/patients/[id].astro" and "src/pages/patients/[patientId].astro" using SSR mode. A dynamic SSR route cannot be defined more than once.
+[33m[1m13:23:05[22m [WARN] [router][39m A collision will result in an hard error in following versions of Astro.
+[2m13:23:05[22m [34m[content][39m Syncing content
+[2m13:23:05[22m [34m[content][39m Synced content
+[2m13:23:05[22m [34m[types][39m Generated [2m53ms[22m
+[2m13:23:05[22m [34m[check][39m Getting diagnostics for Astro files in C:\claude-projects\AppMedicoV2...
+[96msrc/components/Dashboard/AdminDashboard.astro[0m:[93m39[0m:[93m7[0m - [93mwarning[0m[90m ts(6133): [0m'docsRes' is declared but its value is never read.
+
+[7m39[0m const docsRes = await db.execute(`SELECT COUNT(*) as total FROM Users WHERE roleId = 3`);
+[7m  [0m [93m      ~~~~~~~[0m
+
+[96msrc/pages/batches/add.astro[0m:[93m27[0m:[93m9[0m - [93mwarning[0m[90m ts(6133): [0m'batchNumber' is declared but its value is never read.
+
+[7m27[0m   const batchNumber = data.get('batchNumber') as string;
+[7m  [0m [93m        ~~~~~~~~~~~[0m
+
+[96msrc/pages/consultations/index.astro[0m:[93m11[0m:[93m7[0m - [93mwarning[0m[90m ts(6133): [0m'isDoctorOrAdmin' is declared but its value is never read.
+
+[7m11[0m const isDoctorOrAdmin = [ROLES.DOCTOR, ROLES.JEFE_MEDICO, ROLES.ADMINISTRADOR].includes(user?.roleId as number);
+[7m  [0m [93m      ~~~~~~~~~~~~~~~[0m
+
+[96msrc/pages/injuries/[id].astro[0m:[93m47[0m:[93m7[0m - [93mwarning[0m[90m ts(6133): [0m'severityStyles' is declared but its value is never read.
+
+[7m47[0m const severityStyles: any = {
+[7m  [0m [93m      ~~~~~~~~~~~~~~[0m
+
+[96msrc/pages/injuries/add.astro[0m:[93m72[0m:[93m16[0m - [93mwarning[0m[90m ts(6133): [0m'coach' is declared but its value is never read.
+
+[7m72[0m     for (const coach of coachesResult.rows) {
+[7m  [0m [93m               ~~~~~[0m
+
+[96msrc/pages/nutrition/plans/add.astro[0m:[93m66[0m:[93m9[0m - [93mwarning[0m[90m ts(6133): [0m'newPlanRes' is declared but its value is never read.
+
+[7m66[0m   const newPlanRes = await db.execute({
+[7m  [0m [93m        ~~~~~~~~~~[0m
+
+[96msrc/pages/nutrition/profiles/add.astro[0m:[93m66[0m:[93m9[0m - [93mwarning[0m[90m ts(6133): [0m'newProf' is declared but its value is never read.
+
+[7m66[0m   const newProf = await db.execute({
+[7m  [0m [93m        ~~~~~~~[0m
+
+Result (64 files): 
+- 0 errors
+- 0 warnings
+- 7 hints
+

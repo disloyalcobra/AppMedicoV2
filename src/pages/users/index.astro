@@ -96,7 +96,7 @@ const usersList = usersRes.rows;
                 </span>
               </td>
               <td class="p-4 text-right">
-                 {u.userId !== user.userId && (
+                 {u.userId !== user?.userId && (
                     <div class="flex items-center justify-end gap-2">
                         <a href={`/users/${u.userId}`} class="w-8 h-8 rounded-lg bg-white border border-slate-200 flex items-center justify-center text-slate-400 hover:text-teal-600 hover:border-teal-300 transition-colors shadow-sm" title="Editar">
                             <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20h9"/><path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4Z"/></svg>

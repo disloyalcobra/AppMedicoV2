@@ -47,18 +47,18 @@ if (Astro.request.method === 'POST') {
           ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     args: [
       finalPatientId,
-      data.get('waistCircumference'),
-      data.get('bodyFatPercentage'),
-      data.get('physicalActivityLevel'),
-      data.get('familyHistory'),
-      data.get('dietaryRecall24h'),
-      data.get('consumptionFrequency'),
-      data.get('dietaryHabits'),
-      data.get('mealSchedule'),
-      data.get('waterConsumptionLiters'),
-      data.get('nutritionalDiagnosis'),
-      data.get('metabolicRisk'),
-      data.get('nutritionalObjective')
+      data.get('waistCircumference') as string,
+      data.get('bodyFatPercentage') as string,
+      data.get('physicalActivityLevel') as string,
+      data.get('familyHistory') as string,
+      data.get('dietaryRecall24h') as string,
+      data.get('consumptionFrequency') as string,
+      data.get('dietaryHabits') as string,
+      data.get('mealSchedule') as string,
+      data.get('waterConsumptionLiters') as string,
+      data.get('nutritionalDiagnosis') as string,
+      data.get('metabolicRisk') as string,
+      data.get('nutritionalObjective') as string
     ]
   });
 
