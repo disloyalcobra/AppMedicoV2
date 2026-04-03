@@ -1,8 +1,18 @@
 ---
+/**
+ * HUB CENTRAL DEL PACIENTE (Expediente Clínico)
+ * Esta es la página más compleja del sistema. Gestiona la visualización de:
+ * 1. Datos personales del paciente.
+ * 2. Historial de Citas.
+ * 3. Historial de Consultas Médicas.
+ * 4. Recetas Activas.
+ * 5. Historial de Lesiones.
+ */
 import Layout from '../../layouts/Layout.astro';
 import { ROLES, checkRole } from '../../functions/checkRole';
 import { db } from '../../turso';
 
+// 1. SEGURIDAD DE RUTA: Usuarios permitidos según el Middleware
 const user = Astro.locals.user;
 if (!checkRole(user, [ROLES.DOCTOR, ROLES.JEFE_MEDICO, ROLES.NUTRIOLOGO, ROLES.ENTRENADOR, ROLES.ADMINISTRADOR, ROLES.ESTUDIANTE])) {
   return Astro.redirect('/403');
@@ -10,12 +20,14 @@ if (!checkRole(user, [ROLES.DOCTOR, ROLES.JEFE_MEDICO, ROLES.NUTRIOLOGO, ROLES.E
 
 const { id } = Astro.params;
 
-// Security: Students can only view their own record
+// 2. SEGURIDAD DE DATOS (Ownership): Un estudiante solo puede ver SU propio ID.
 if (user?.roleId === ROLES.ESTUDIANTE && String(user.userId) !== String(id)) {
   return Astro.redirect('/403');
 }
 
-// 1. Fetch Patient + User Info
+// --- OBTENCIÓN DE DATOS DESDE TURSO ---
+
+// A. Información básica del Paciente y Usuario
 const patientResult = await db.execute({
   sql: `SELECT p.patientId, u.firstName, u.lastName, p.dateOfBirth, p.bloodType, p.allergies, p.weight, p.height, p.isAthlete, p.gender, p.schoolLevel 
         FROM Patients p JOIN Users u ON p.patientId = u.userId 
@@ -29,6 +41,7 @@ if (patientResult.rows.length === 0) {
 
 const pData = patientResult.rows[0];
 const dob = new Date(pData.dateOfBirth as string);
+// Cálculo de edad dinámica basada en fecha de nacimiento
 const age = Math.abs(new Date(Date.now() - dob.getTime()).getUTCFullYear() - 1970);
 
 const patient = {
@@ -45,7 +58,7 @@ const patient = {
   schoolLevel: pData.schoolLevel || ''
 };
 
-// 2. Fetch Appointments
+// B. Citas Médicas (Ordenadas por fecha descendente)
 const aptResult = await db.execute({
   sql: `SELECT a.appointmentId as id, a.dateTime as date, u.firstName || ' ' || u.lastName as doctor, a.status 
         FROM Appointments a JOIN Users u ON a.doctorId = u.userId 
@@ -54,13 +67,12 @@ const aptResult = await db.execute({
 });
 const appointments = aptResult.rows.map(r => ({
   id: r.id,
-  // Format date simply for demo purposes (can use proper formatting if needed)
   date: String(r.date), 
   doctor: 'Dr. ' + r.doctor,
   status: r.status
 }));
 
-// 3. Fetch Consultations
+// C. Consultas Médicas (Incluyendo conteo de sub-elementos vía sub-queries)
 const consResult = await db.execute({
   sql: `SELECT c.consultationId as id, c.consultationDate as date, c.diagnosis, 
         (SELECT COUNT(*) FROM Prescriptions WHERE consultationId = c.consultationId) as prescriptionsCount,
@@ -71,7 +83,7 @@ const consResult = await db.execute({
 });
 const consultations = consResult.rows;
 
-// 4. Fetch Prescriptions
+// D. Recetas Activas (Relacionando Medicamentos con Consultas)
 const presResult = await db.execute({
   sql: `SELECT p.prescriptionId as id, m.brandName || ' (' || m.activeIngredient || ')' as med, p.dosage as dose, p.frequency as freq, p.duration, p.consultationId
         FROM Prescriptions p JOIN Medications m ON p.medicationId = m.medicationId
@@ -82,7 +94,7 @@ const presResult = await db.execute({
 });
 const prescriptions = presResult.rows;
 
-// 5. Fetch Injuries
+// E. Historial de Lesiones
 const injResult = await db.execute({
   sql: `SELECT injuryId as id, injuryDate as date, injuryType as type, bodyZone as zone, severity, status, campusLocation as campus 
         FROM Injuries WHERE patientId = ? ORDER BY injuryDate DESC`,
@@ -90,12 +102,12 @@ const injResult = await db.execute({
 });
 const injuries = injResult.rows;
 
-// Determine what the current user can do
+// --- CONFIGURACIÓN DE PERMISOS DE INTERFAZ ---
+
 const isDoctorOrAdmin = user?.roleId === ROLES.DOCTOR || user?.roleId === ROLES.ADMINISTRADOR || user?.roleId === ROLES.JEFE_MEDICO;
-const canEditOrReport = isDoctorOrAdmin; // Students can report from their own view but we handle it specifically below
 const isStudent = user?.roleId === ROLES.ESTUDIANTE;
 
-// Icon helpers
+// Definición de íconos SVG para uso repetitivo en el template
 const ICONS = {
   plus: '<path d="M5 12h14"/><path d="M12 5v14"/>',
   edit: '<path d="M17 3a2.85 2.83 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5Z"/>',
@@ -106,6 +118,7 @@ const ICONS = {
 
 <Layout title={`Expediente: ${patient.firstName} ${patient.lastName}`}>
   
+  {/* CABECERA: Nombre y Acciones de Edición */}
   <div class="mb-6 flex justify-between items-end">
     <div>
       <a href="/patients" class="text-teal-600 hover:text-teal-700 text-sm font-semibold flex items-center gap-1 mb-2">
@@ -123,6 +136,7 @@ const ICONS = {
     </div>
     
     <div class="flex gap-2">
+      {/* Solo los doctores o admin pueden editar los datos demográficos básicos */}
       {isDoctorOrAdmin && (
         <a href={`/patients/edit/${patient.id}`} class="px-4 py-2 bg-slate-50 border border-slate-200 text-slate-700 font-semibold rounded-xl text-sm hover:bg-slate-100 transition-colors flex items-center gap-1.5">
           <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 3a2.85 2.83 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5Z"/></svg>
@@ -137,7 +151,7 @@ const ICONS = {
     </div>
   </div>
 
-  <!-- Header Data Box -->
+  {/* CAJA DE DATOS RÁPIDOS: Resumen médico preventivo */}
   <div class="glass-card rounded-2xl p-6 mb-8 grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-4">
     <div>
       <p class="text-slate-400 text-xs uppercase tracking-wider font-semibold mb-1">Edad</p>
@@ -167,7 +181,7 @@ const ICONS = {
 
   <div class="grid grid-cols-1 xl:grid-cols-2 gap-8">
     
-    <!-- CITAS -->
+    {/* SECCIÓN CITAS: Gestión de tiempos y especialistas */}
     <div class="glass-card rounded-2xl p-6">
       <div class="flex items-center justify-between mb-4 border-b border-white/40 pb-4">
         <h3 class="text-xl font-bold text-slate-800">Citas</h3>
@@ -200,7 +214,7 @@ const ICONS = {
       </div>
     </div>
 
-    <!-- CONSULTAS -->
+    {/* SECCIÓN CONSULTAS: Diagnósticos médicos detallados */}
     <div class="glass-card rounded-2xl p-6">
       <div class="flex items-center justify-between mb-4 border-b border-white/40 pb-4">
         <h3 class="text-xl font-bold text-slate-800">Consultas</h3>
@@ -236,7 +250,7 @@ const ICONS = {
       </div>
     </div>
 
-    <!-- RECETAS -->
+    {/* SECCIÓN RECETAS: Tratamientos farmacológicos activos */}
     <div class="glass-card rounded-2xl p-6">
       <div class="flex items-center justify-between mb-4 border-b border-white/40 pb-4">
         <h3 class="text-xl font-bold text-slate-800">Recetas Activas</h3>
@@ -281,7 +295,7 @@ const ICONS = {
       </div>
     </div>
 
-    <!-- LESIONES -->
+    {/* SECCIÓN LESIONES: Incidentes físicos y recuperación */}
     <div class="glass-card rounded-2xl p-6">
       <div class="flex items-center justify-between mb-4 border-b border-white/40 pb-4">
         <h3 class="text-xl font-bold text-slate-800">Lesiones</h3>
@@ -308,6 +322,7 @@ const ICONS = {
               )}
             </div>
             <div class="flex flex-wrap gap-2 text-[10px] font-bold uppercase tracking-wider">
+              {/* Badges de estado con colores dinámicos según severidad y recuperación */}
               <span class="bg-rose-100 text-rose-700 px-2.5 py-1 rounded-md border border-rose-200">{inj.severity}</span>
               <span class="bg-amber-100 text-amber-700 px-2.5 py-1 rounded-md border border-amber-200">{inj.status}</span>
               <span class="bg-slate-100 text-slate-600 px-2.5 py-1 rounded-md border border-slate-200">{inj.date}</span>

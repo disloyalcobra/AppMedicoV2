@@ -1,16 +1,22 @@
 ---
+/**
+ * COMPONENTE SIDEBAR (Navegación Lateral)
+ * Este componente genera el menú de navegación principal del sistema.
+ * Es altamente dinámico y utiliza el sistema RBAC para ocultar o mostrar
+ * módulos según el rol del usuario logueado.
+ */
 import SideBarLink from './SideBarLink.astro';
 import { ROLES, checkRole } from '../../../functions/checkRole';
 import type { SessionUser } from '../../../functions/getSession';
 
 interface Props {
-  user: SessionUser | null;
-  currentPath: string;
+  user: SessionUser | null; // Usuario actual de la sesión
+  currentPath: string;      // Ruta actual para marcar el enlace activo
 }
 
 const { user, currentPath } = Astro.props;
 
-// Reusable SVG Paths for Icons
+// Diccionario de íconos SVG reutilizables para el menú
 const ICONS = {
   dashboard: '<rect width="7" height="9" x="3" y="3" rx="1"/><rect width="7" height="5" x="14" y="3" rx="1"/><rect width="7" height="9" x="14" y="12" rx="1"/><rect width="7" height="5" x="3" y="16" rx="1"/>',
   patients: '<path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M22 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/>',
@@ -25,45 +31,47 @@ const ICONS = {
   medical: '<path d="M22 12h-4l-3 9L9 3l-3 9H2"/>'
 };
 
+/**
+ * CONFIGURACIÓN DE LINKS
+ * Cada link define:
+ * - href: La ruta destino.
+ * - label: El texto a mostrar.
+ * - icon: El ícono SVG asociado.
+ * - roles: Lista de IDs de roles que tienen permiso para ver este enlace.
+ */
 const links = [
-  // Dashboard - NO staff, NO estudiante (estudiante solo ve su módulo)
+  // Dashboard principal - El Staff y Estudiante tienen sus propias redirecciones en index.astro
   { href: '/', label: 'Dashboard', icon: ICONS.dashboard, roles: [ROLES.ADMINISTRADOR, ROLES.JEFE_MEDICO, ROLES.DOCTOR, ROLES.NUTRIOLOGO, ROLES.ENTRENADOR] },
   
-  // Paciente - solo Estudiante (ve su propia información)
-  { href: '/mi-perfil', label: 'Paciente', icon: ICONS.patients, roles: [ROLES.ESTUDIANTE] },
+  // Link especial para el Estudiante (Acceso directo a su perfil)
+  { href: '/mi-perfil', label: 'Mi Expediente', icon: ICONS.patients, roles: [ROLES.ESTUDIANTE] },
   
-  // Pacientes - Doctor, Jefe, Admin, Entrenador (NO Nutriólogo)
+  // Módulo de Pacientes (Global)
   { href: '/patients', label: 'Pacientes', icon: ICONS.patients, roles: [ROLES.DOCTOR, ROLES.JEFE_MEDICO, ROLES.ENTRENADOR, ROLES.ADMINISTRADOR] },
   
-  // Agenda (Citas) - Doctor, Jefe, Admin, Nutriólogo (NO Staff)
   { href: '/appointments', label: 'Agenda', icon: ICONS.appointments, roles: [ROLES.DOCTOR, ROLES.JEFE_MEDICO, ROLES.ADMINISTRADOR, ROLES.NUTRIOLOGO] },
   
-  // Consultas - Doctor, Jefe, Admin
   { href: '/consultations', label: 'Consultas', icon: ICONS.medical, roles: [ROLES.DOCTOR, ROLES.JEFE_MEDICO, ROLES.ADMINISTRADOR] },
   
-  // Lesiones - Doctor, Jefe, Admin, Entrenador
   { href: '/injuries', label: 'Lesiones', icon: ICONS.injuries, roles: [ROLES.DOCTOR, ROLES.JEFE_MEDICO, ROLES.ADMINISTRADOR, ROLES.ENTRENADOR] },
   
-  // Inventario - Staff y Admin solamente
   { href: '/medications', label: 'Inventario', icon: ICONS.inventory, roles: [ROLES.STAFF, ROLES.ADMINISTRADOR] },
   
-  // Nutrición - Nutriólogo, Doctor, Jefe, Entrenador
   { href: '/nutrition/profiles', label: 'Nutrición', icon: ICONS.nutrition, roles: [ROLES.NUTRIOLOGO, ROLES.DOCTOR, ROLES.JEFE_MEDICO, ROLES.ADMINISTRADOR, ROLES.ENTRENADOR] },
   
-  // Alertas y Notas - Doctor, Nutriólogo, Entrenador, Jefe
   { href: '/notes', label: 'Alertas y Notas', icon: ICONS.notes, roles: [ROLES.DOCTOR, ROLES.NUTRIOLOGO, ROLES.ENTRENADOR, ROLES.JEFE_MEDICO, ROLES.ADMINISTRADOR] },
   
-  // Reportes - Admin, Jefe
   { href: '/reports', label: 'Reportes', icon: ICONS.reports, roles: [ROLES.ADMINISTRADOR, ROLES.JEFE_MEDICO] },
   
-  // Usuarios - solo Admin y Jefe
   { href: '/users', label: 'Usuarios', icon: ICONS.users, roles: [ROLES.JEFE_MEDICO, ROLES.ADMINISTRADOR] }
 ];
 
+// FILTRADO DINÁMICO: Solo mostramos los links que el usuario tiene permitido ver
 const visibleLinks = links.filter(link => checkRole(user, link.roles));
 ---
 
 <aside class="w-64 glass-strong shadow-2xl flex flex-col min-h-screen border-r border-white/40 z-20 sticky top-0">
+  {/* Branding / Logo */}
   <div class="p-6 border-b border-white/30">
     <div class="flex items-center gap-3">
       <div class="w-10 h-10 bg-gradient-to-br from-teal-500 to-sky-500 rounded-xl flex items-center justify-center shadow-md">
@@ -76,6 +84,7 @@ const visibleLinks = links.filter(link => checkRole(user, link.roles));
     </div>
   </div>
   
+  {/* Lista de Navegación */}
   <nav class="flex-1 px-4 py-6 space-y-1.5 overflow-y-auto scrollbar-hide">
     {visibleLinks.map(link => (
       <SideBarLink 
@@ -87,6 +96,7 @@ const visibleLinks = links.filter(link => checkRole(user, link.roles));
     ))}
   </nav>
 
+  {/* Sección de Usuario y Logout */}
   <div class="p-4 border-t border-white/30 mt-auto bg-white/20">
     <div class="flex items-center gap-3 px-2 py-2 mb-4">
       <div class="w-9 h-9 bg-teal-100 rounded-full flex items-center justify-center border border-teal-200 text-teal-800 font-bold capitalize">
@@ -94,7 +104,7 @@ const visibleLinks = links.filter(link => checkRole(user, link.roles));
       </div>
       <div class="overflow-hidden">
         <p class="text-sm font-semibold text-slate-800 truncate">{user?.firstName} {user?.lastName}</p>
-        <p class="text-xs text-slate-500 truncate">Rol: {user?.roleId === 1 ? 'Admin' : 'Usuario'}</p>
+        <p class="text-xs text-slate-500 truncate font-medium">Conectado</p>
       </div>
     </div>
     

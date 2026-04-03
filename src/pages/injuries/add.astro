@@ -1,8 +1,14 @@
 ---
+/**
+ * PÁGINA DE REPORTE DE LESIONES
+ * Permite registrar nuevas lesiones en el sistema. Incluye una lógica de 
+ * notificación automática para entrenadores si el paciente es un atleta.
+ */
 import Layout from '../../layouts/Layout.astro';
 import { ROLES, checkRole } from '../../functions/checkRole';
 import { db } from '../../turso';
 
+// 1. SEGURIDAD: Médicos, Administradores y el propio Estudiante pueden reportar.
 const user = Astro.locals.user;
 if (!checkRole(user, [ROLES.DOCTOR, ROLES.JEFE_MEDICO, ROLES.ADMINISTRADOR, ROLES.ESTUDIANTE])) {
   return Astro.redirect('/403');
@@ -11,12 +17,12 @@ if (!checkRole(user, [ROLES.DOCTOR, ROLES.JEFE_MEDICO, ROLES.ADMINISTRADOR, ROLE
 const url = Astro.url;
 let patientIdParam = url.searchParams.get('patientId');
 
-// Si es estudiante, forzar su propio ID
+// 2. RESTRICCIÓN DE ESTUDIANTE: Si es estudiante, forzamos que reporte SU propia lesión.
 if (user?.roleId === ROLES.ESTUDIANTE) {
   patientIdParam = String(user.userId);
 }
 
-// Fetch all patients for selection if needed
+// 3. CARGA DE DATOS: Obtenemos la lista de todos los pacientes para el selector (si no hay uno fijo)
 const allPatientsRes = await db.execute(`SELECT p.patientId, u.firstName, u.lastName, p.isAthlete FROM Patients p JOIN Users u ON p.patientId = u.userId`);
 const allPatients = allPatientsRes.rows;
 
@@ -25,39 +31,44 @@ if (patientIdParam) {
     patientData = allPatients.find((p: any) => p.patientId.toString() === patientIdParam);
 }
 
+let success = false;
+
+// 4. PROCESAMIENTO DEL REPORTE (POST)
 if (Astro.request.method === 'POST') {
   const data = await Astro.request.formData();
   const finalPatientId = patientIdParam || data.get('patientId') as string;
   patientData = allPatients.find((p: any) => p.patientId.toString() === finalPatientId);
-  notifyCoach = data.get('notifyCoach') === 'on';
+  
+  const notifyCoach = data.get('notifyCoach') === 'on';
   const type = data.get('type') as string;
   const zone = data.get('zone') as string;
   const severity = data.get('severity') as string;
   const campus = data.get('campus') as string;
   const notes = data.get('notes') as string;
-  const date = new Date().toISOString().split('T')[0]; // Hoy
+  const date = new Date().toISOString().split('T')[0]; // Fecha actual
 
-  // Obtenemos una consulta (creamos un stub porque Injuries requiere consultationId temporal en el esquema si aplica)
-  // NOTA: Para este prototipo asociamos a la consulta 1 o creamos un registro.
-  // En un sistema completo la lesión nacería desde una consulta activa.
+  // ID de consulta de respaldo (Legacy requirement en esquema)
   const consId = 1; 
 
-  // Insertar Lesión
+  // Inserción en Turso DB
   await db.execute({
     sql: `INSERT INTO Injuries (patientId, consultationId, campusLocation, sport, injuryType, bodyZone, severity, injuryDate, observations, status) 
           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'Activa')`,
     args: [finalPatientId, consId, campus, patientData?.sport || 'Ninguno', type, zone, severity, date, notes]
   });
   
+  // 5. SISTEMA DE ALERTAS COLABORATIVAS:
+  // Si se marcó "notificar" y el paciente es atleta, enviamos una alerta a sus entrenadores.
   if (notifyCoach && patientData.isAthlete === 1) {
-    console.log("NOTIFICANDO AL ENTRENADOR (Alerta generada)");
-    // Buscamos a sus entrenadores
+    console.log("[AlertSystem] Notificando entrenadores...");
+    
+    // Obtenemos los IDs de entrenadores vinculados a este atleta
     const coachesResult = await db.execute({
       sql: `SELECT coachId FROM Coach_Athlete WHERE patientId = ?`,
       args: [finalPatientId]
     });
     
-    // Generar alerta para cada entrenador (suponiendo que haya 1 al menos)
+    // Creamos una nota de alerta para el dashboard de cada entrenador
     for (const coach of coachesResult.rows) {
        await db.execute({
          sql: `INSERT INTO CollaborativeNotes (patientId, authorId, noteContent, isAlert, alertTags)
@@ -72,8 +83,17 @@ if (Astro.request.method === 'POST') {
 ---
 
 <Layout title="Reportar Lesión">
+  {/* Mensaje de Éxito */}
+  {success && (
+    <div class="mb-6 p-4 bg-emerald-50 border border-emerald-200 text-emerald-700 rounded-xl font-semibold flex justify-between items-center animate-in fade-in slide-in-from-top-4">
+      <span>✅ Lesión reportada correctamente.</span>
+      <a href={patientIdParam ? `/patients/${patientIdParam}` : "/injuries"} class="underline text-emerald-900">Volver</a>
+    </div>
+  )}
+
   <div class="mb-6 flex justify-between items-end">
     <div>
+      {/* Navegación Breadcrumb inteligente */}
       {patientIdParam ? (
         <a href={`/patients/${patientIdParam}`} class="text-teal-600 hover:text-teal-700 text-sm font-semibold flex items-center gap-1 mb-2">
           <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m15 18-6-6 6-6"/></svg>
@@ -94,6 +114,7 @@ if (Astro.request.method === 'POST') {
     <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
       <div class="md:col-span-2">
         <label class="block text-sm font-semibold text-slate-700 mb-1.5 ml-1">Paciente</label>
+        {/* Bloqueo de ID si es para un paciente específico */}
         {patientIdParam ? (
           <>
             <div class="w-full bg-slate-100 border border-slate-200/60 rounded-xl px-4 py-3 text-slate-800 font-semibold shadow-sm cursor-not-allowed text-sm flex items-center gap-2">
@@ -159,6 +180,7 @@ if (Astro.request.method === 'POST') {
         <textarea name="notes" rows="4" class="w-full bg-white/50 border border-slate-200/60 rounded-xl px-4 py-3 text-slate-800 focus:outline-none focus:ring-2 focus:ring-teal-500 shadow-sm" placeholder="Detalle médico de la lesión..."></textarea>
       </div>
 
+      {/* LÓGICA DE ALERTA: Solo se muestra si el paciente es un atleta registrado */}
       {patientData?.isAthlete === 1 && (
         <div class="md:col-span-2 p-4 bg-amber-50 rounded-xl border border-amber-200 mt-2">
           <label class="flex items-start gap-3 cursor-pointer">
