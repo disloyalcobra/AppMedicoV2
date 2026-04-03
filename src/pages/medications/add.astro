@@ -16,10 +16,10 @@ if (Astro.request.method === 'POST') {
     sql: `INSERT INTO Medications (brandName, activeIngredient, presentation, currentStock, minimumStock)
           VALUES (?, ?, ?, 0, ?)`,
     args: [
-      data.get('brandName'),
-      data.get('activeIngredient'),
-      data.get('presentation'),
-      data.get('reorderPoint')
+      data.get('brandName') as string,
+      data.get('activeIngredient') as string,
+      data.get('presentation') as string,
+      data.get('reorderPoint') as string
     ]
   });
 

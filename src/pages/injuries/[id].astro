@@ -16,7 +16,7 @@ const injRes = await db.execute({
           JOIN Patients p ON i.patientId = p.patientId
           JOIN Users u ON p.patientId = u.userId
           WHERE i.injuryId = ?`,
-    args: [id]
+    args: [String(id)]
 });
 
 if (injRes.rows.length === 0) {
@@ -37,7 +37,7 @@ if (Astro.request.method === 'POST' && user?.roleId !== ROLES.ENTRENADOR) {
     
     await db.execute({
         sql: `UPDATE Injuries SET status = ?, severity = ? WHERE injuryId = ?`,
-        args: [newStatus, newSeverity, id]
+        args: [newStatus, newSeverity, String(id)]
     });
     
     return Astro.redirect(`/injuries/${id}`);

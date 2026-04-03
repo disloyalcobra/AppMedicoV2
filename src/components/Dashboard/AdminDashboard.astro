@@ -37,10 +37,10 @@ const activeAlerts = Number(alertsRes.rows[0].total);
 
 // 4. Doctores Totales
 const docsRes = await db.execute(`SELECT COUNT(*) as total FROM Users WHERE roleId = 3`);
-const activeDoctors = Number(docsRes.rows[0].total);
+// const activeDoctors = Number(docsRes.rows[0].total);
 
 const stats = [
-  { title: 'Pacientes Totales', value: totalPatients, icon: ICONS.users, trend: 'Global', href: '/patients' },
+  { title: 'Pacientes Totales', value: totalPatients, icon: ICONS.users, trend: 'Global', color: 'from-amber-500 to-orange-500', href: '/patients' },
   { title: 'Citas Hoy', value: aptsToday, icon: ICONS.calendar, color: 'from-sky-500 to-indigo-500', href: '/appointments' },
   { title: 'Citas Semanales', value: aptsWeek, icon: ICONS.activity, color: 'from-emerald-500 to-teal-500', href: '/appointments' },
   { title: 'Alertas Activas', value: activeAlerts, icon: ICONS.alert, color: 'from-rose-500 to-pink-500', href: '/injuries' }

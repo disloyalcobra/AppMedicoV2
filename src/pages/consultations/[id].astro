@@ -9,6 +9,9 @@ if (!checkRole(user, [ROLES.DOCTOR, ROLES.JEFE_MEDICO, ROLES.ADMINISTRADOR, ROLE
 }
 
 const { id } = Astro.params;
+if (!id) return Astro.redirect('/404');
+
+const isDoctorOrAdmin = user?.roleId === ROLES.DOCTOR || user?.roleId === ROLES.ADMINISTRADOR || user?.roleId === ROLES.JEFE_MEDICO;
 
 // 1. Obtener datos de la consulta + paciente + cita
 const consRes = await db.execute({

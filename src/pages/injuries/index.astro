@@ -68,7 +68,7 @@ const severityStyles: Record<string, string> = {
           </tr>
         </thead>
         <tbody class="divide-y divide-slate-100/60">
-          {injuries.map(injury => (
+          {injuries.map((injury: any) => (
             <tr class="hover:bg-white/40 transition-colors">
               <td class="p-4 text-center">
                 <span class="text-slate-400 font-bold text-sm">#{injury.id.toString().padStart(4, '0')}</span>

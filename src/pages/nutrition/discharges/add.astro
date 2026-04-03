@@ -60,10 +60,10 @@ if (Astro.request.method === 'POST') {
     args: [
       finalPlanId,
       date,
-      data.get('reason'),
-      data.get('targetWeightAchieved'),
+      data.get('reason') as string,
+      data.get('targetWeightAchieved') as string,
       0, // Fallback MVP duration 
-      data.get('maintenanceRecommendations'),
+      data.get('maintenanceRecommendations') as string,
       goalAchieved
     ]
   });

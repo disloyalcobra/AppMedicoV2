@@ -16,7 +16,7 @@ const injRes = await db.execute({
         JOIN Patients p ON i.patientId = p.patientId
         JOIN Users u ON p.patientId = u.userId
         WHERE i.injuryId = ?`,
-  args: [id]
+  args: [String(id)]
 });
 
 if (injRes.rows.length === 0) {
@@ -43,7 +43,7 @@ if (Astro.request.method === 'POST') {
               status = ?, estimatedRecovery = ?, treatment = ?, observations = ?
           WHERE injuryId = ?`,
     args: [injuryType, bodyZone, severity, campusLocation, status,
-           estimatedRecovery || null, treatment, observations, id]
+           estimatedRecovery || null, treatment, observations, String(id)]
   });
 
   return Astro.redirect(`/injuries/${id}`);
@@ -80,7 +80,7 @@ if (Astro.request.method === 'POST') {
 
         <div>
           <label class="block text-sm font-semibold text-slate-700 mb-1.5 ml-1">Zona Afectada</label>
-          <input type="text" name="bodyZone" value={injury.bodyZone} required
+          <input type="text" name="bodyZone" value={String(injury.bodyZone)} required
             placeholder="Ej: Tobillo Derecho"
             class="w-full bg-white/50 border border-slate-200/60 rounded-xl px-4 py-3 text-slate-800 focus:outline-none focus:ring-2 focus:ring-teal-500 shadow-sm"/>
         </div>

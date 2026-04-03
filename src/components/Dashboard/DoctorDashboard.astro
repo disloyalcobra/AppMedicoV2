@@ -14,11 +14,6 @@ const ICONS = {
 const patRes = await db.execute(`SELECT COUNT(*) as total FROM Patients`);
 const totalPatients = Number(patRes.rows[0].total);
 
-const aptsRes = await db.execute(`
-  SELECT
-    SUM(CASE WHEN date(dateTime) = date('now') THEN 1 ELSE 0 END) as today,
-    SUM(CASE WHEN date(dateTime) >= date('now', '-7 days') THEN 1 ELSE 0 END) as week
-  FROM Appointments WHERE doctorId = ?`, );
 // doctorId filter: use user.userId
 const aptsFiltered = await db.execute({
   sql: `SELECT
@@ -28,12 +23,7 @@ const aptsFiltered = await db.execute({
   args: [user?.userId]
 });
 const aptsToday = Number(aptsFiltered.rows[0]?.today || 0);
-const aptsPending = Number(aptsFiltered.rows[0]?.pending || 0);
 
-const consRes = await db.execute(`
-  SELECT COUNT(*) as total FROM Consultations c
-  JOIN Appointments a ON c.appointmentId = a.appointmentId
-  WHERE a.doctorId = ?`, );
 const consFiltered = await db.execute({
   sql: `SELECT COUNT(*) as total FROM Consultations c
         JOIN Appointments a ON c.appointmentId = a.appointmentId

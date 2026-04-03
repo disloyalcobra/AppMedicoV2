@@ -19,7 +19,7 @@ const medsRes = await db.execute(`
 
 const medications = medsRes.rows.map(m => ({
   ...m,
-  critical: m.stock <= m.minStock
+  critical: Number(m.stock ?? 0) <= Number(m.minStock ?? 0)
 }));
 ---
 
@@ -69,7 +69,7 @@ const medications = medsRes.rows.map(m => ({
           </tr>
         </thead>
         <tbody class="divide-y divide-slate-100/60">
-          {medications.map(med => (
+          {medications.map((med: any) => (
             <tr class={`hover:bg-white/40 transition-colors ${med.critical ? 'bg-rose-50/30' : ''}`}>
               <td class="p-4 text-center">
                 <span class="text-slate-400 font-bold text-sm">#{med.id}</span>

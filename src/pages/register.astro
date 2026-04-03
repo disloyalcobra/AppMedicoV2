@@ -1,6 +1,6 @@
 ---
 import AuthLayout from '../layouts/AuthLayout.astro';
-import { ROLES, checkRole } from '../functions/checkRole';
+import { ROLES } from '../functions/checkRole';
 
 // Protect this route - only admins can register new users
 const user = Astro.locals.user;
@@ -13,7 +13,7 @@ let success = '';
 
 if (Astro.request.method === 'POST') {
   try {
-    const data = await Astro.request.formData();
+    const _data = await Astro.request.formData();
     // In a real app, you would insert into Turso here
     success = 'Usuario registrado exitosamente (Mock).';
   } catch (e) {
