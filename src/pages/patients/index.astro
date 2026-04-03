@@ -35,18 +35,42 @@ if (user?.roleId === ROLES.ENTRENADOR) {
 }
 
 // Turso DB query
+interface Patient {
+  id: number;
+  firstName: string;
+  lastName: string;
+  dateOfBirth: string;
+  isAthlete: number;
+  bloodType: string;
+  gender: string;
+  weight: number;
+  height: number;
+  allergies: string;
+  schoolLevel: string;
+  age: number;
+}
+
 const result = await db.execute({ sql: query, args: queryArgs });
 
-
-const patients = result.rows.map(row => {
+const patients: Patient[] = result.rows.map((row: any) => {
   // Calculate age from dateOfBirth
   const dob = new Date(row.dateOfBirth as string);
   const ageDifMs = Date.now() - dob.getTime();
   const ageDate = new Date(ageDifMs);
   const age = Math.abs(ageDate.getUTCFullYear() - 1970);
-  
+
   return {
-    ...row,
+    id: Number(row.id),
+    firstName: String(row.firstName),
+    lastName: String(row.lastName),
+    dateOfBirth: String(row.dateOfBirth),
+    isAthlete: Number(row.isAthlete),
+    bloodType: String(row.bloodType || ''),
+    gender: String(row.gender || ''),
+    weight: Number(row.weight || 0),
+    height: Number(row.height || 0),
+    allergies: String(row.allergies || ''),
+    schoolLevel: String(row.schoolLevel || ''),
     age
   };
 });

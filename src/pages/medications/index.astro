@@ -17,8 +17,23 @@ const medsRes = await db.execute(`
   ORDER BY currentStock ASC
 `);
 
-const medications = medsRes.rows.map(m => ({
-  ...m,
+interface Medication {
+  id: number;
+  name: string;
+  activeIngredient: string;
+  presentation: string;
+  stock: number;
+  minStock: number;
+  critical: boolean;
+}
+
+const medications = medsRes.rows.map((m: any): Medication => ({
+  id: Number(m.id),
+  name: String(m.name),
+  activeIngredient: String(m.activeIngredient),
+  presentation: String(m.presentation),
+  stock: Number(m.stock ?? 0),
+  minStock: Number(m.minStock ?? 0),
   critical: Number(m.stock ?? 0) <= Number(m.minStock ?? 0)
 }));
 ---

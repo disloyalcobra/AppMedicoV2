@@ -21,15 +21,39 @@ const injRes = await db.execute(`
   ORDER BY i.injuryDate DESC
 `);
 
-const injuries = injRes.rows.map(r => {
+const injuries = injRes.rows.map((r: any): Injury => {
     // Basic date formatting
     const d = new Date(r.dateStr as string);
     return {
-        ...r,
+        id: Number(r.id),
+        type: String(r.type),
+        zone: String(r.zone),
         date: d.toLocaleDateString(),
-        isAthlete: r.isAthlete === 1
+        dateStr: String(r.dateStr),
+        status: String(r.status),
+        severity: String(r.severity),
+        campusLocation: String(r.campusLocation),
+        patientId: Number(r.patientId),
+        isAthlete: r.isAthlete === 1,
+        sport: String(r.sport),
+        patient: String(r.patient)
     };
 });
+
+interface Injury {
+  id: number;
+  type: string;
+  zone: string;
+  date: string;
+  dateStr: string;
+  status: string;
+  severity: string;
+  campusLocation: string;
+  patientId: number;
+  isAthlete: boolean;
+  sport: string;
+  patient: string;
+}
 
 const severityStyles: Record<string, string> = {
   'Leve': 'bg-sky-50 text-sky-700 border-sky-200',

@@ -2,13 +2,13 @@
 export interface Props {
   title: string;
   value: any;
-  icon: string; // SVG path
+  icon: string;
   trendLabel?: string;
   colorClass?: string;
   href?: string;
 }
 
-const { title, value, icon, trendLabel, colorClass = "from-teal-500 to-emerald-500", href } = Astro.props;
+const { title, value, icon, trendLabel, colorClass = "from-teal-500 to-emerald-500", href } = Astro.props as Props;
 
 const Tag = href ? 'a' : 'div';
 ---
