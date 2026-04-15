@@ -12,7 +12,12 @@ export const onRequest = defineMiddleware(async (context, next) => {
   const path = url.pathname;
 
   // 1. RUTAS PÚBLICAS: Permitidas sin necesidad de sesión
-  if (path === '/login' || path.startsWith('/api/auth') || path.startsWith('/_astro') || path.startsWith('/public')) {
+  if (path === '/login' ||
+      path === '/register' ||
+      path === '/register-student' ||
+      path.startsWith('/api/auth') ||
+      path.startsWith('/_astro') ||
+      path.startsWith('/public')) {
     return next();
   }
 
