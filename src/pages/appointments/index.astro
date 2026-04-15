@@ -33,7 +33,7 @@ const startDateStr = formatDate(firstDayOfMonth);
 const endDateStr = formatDate(lastDayOfMonth);
 
 let query = `
-  SELECT a.appointmentId as id, a.dateTime as fullDate, a.status, 
+  SELECT a.appointmentId as id, a.dateTime as fullDate, a.status, a.reason,
          p.patientId, u.firstName || ' ' || u.lastName as patient,
          ud.lastName as doctor
   FROM Appointments a
@@ -157,7 +157,7 @@ const monthNames = ['Enero', 'Febrero', 'Marzo', 'Abril', 'Mayo', 'Junio', 'Juli
               <div class="space-y-1.5 flex-1 relative z-20">
                 {dayObj.apps.map((app: any) => (
                   <a href={`/appointments/${app.id}`} 
-                     title={`${app.time} - ${app.patient} (${app.status})`}
+                     title={`${app.time} - ${app.patient} (${app.status}) - Motivo: ${app.reason || 'No especificado'}`}
                      class={`block p-1.5 md:p-2 rounded-lg shadow-sm border-l-4 text-xs hover:scale-[1.03] transition-all relative overflow-hidden backdrop-blur-sm ${
                     app.status === 'En Progreso' ? 'bg-sky-50/80 border-sky-500 text-sky-900 shadow-sky-100' :
                     app.status === 'Completada' ? 'bg-emerald-50/80 border-emerald-500 text-emerald-900 shadow-emerald-100' :

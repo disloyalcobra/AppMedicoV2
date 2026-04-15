@@ -24,8 +24,6 @@ if (Astro.request.method === 'POST') {
   const medId = data.get('medicationId') as string;
   const quantity = Number(data.get('quantity'));
   const expirationDate = data.get('expirationDate') as string;
-  const batchNumber = data.get('batchNumber') as string;
-
   // 1. Insert into Batches
   await db.execute({
       sql: `INSERT INTO Batches (medicationId, quantity, entryDate, expirationDate)

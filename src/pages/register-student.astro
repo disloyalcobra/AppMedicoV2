@@ -1,0 +1,135 @@
+---
+import AuthLayout from '../layouts/AuthLayout.astro';
+import { db } from '../turso';
+import { ROLES } from '../functions/checkRole';
+import bcrypt from 'bcryptjs';
+
+let error = '';
+let success = '';
+
+if (Astro.request.method === 'POST') {
+  try {
+    const data = await Astro.request.formData();
+    const firstName = data.get('firstName') as string;
+    const lastName = data.get('lastName') as string;
+    const matricula = data.get('matricula') as string;
+    const email = data.get('email') as string;
+    const password = data.get('password') as string;
+
+    if (!matricula || !email || !password) {
+      error = 'Por favor completa todos los campos obligatorios.';
+    } else {
+      // 1. Check if a user with this matricula already exists
+      const existingUser = await db.execute({
+        sql: `SELECT userId, email FROM Users WHERE matricula = ? LIMIT 1`,
+        args: [matricula]
+      });
+
+      const salt = await bcrypt.genSalt(10);
+      const passwordHash = await bcrypt.hash(password, salt);
+
+      if (existingUser.rows.length > 0) {
+        const u = existingUser.rows[0];
+        if (u.email) {
+          error = 'Esta matrícula ya tiene una cuenta asociada. Por favor inicia sesión.';
+        } else {
+          // CLAIM FLOW: Update existing record
+          await db.execute({
+            sql: `UPDATE Users SET email = ?, password = ?, firstName = ?, lastName = ? WHERE userId = ?`,
+            args: [email, passwordHash, firstName, lastName, u.userId]
+          });
+          success = '¡Cuenta vinculada y activada exitosamente! Ya puedes iniciar sesión.';
+        }
+      } else {
+        // NEW PROFILE FLOW: Create User and Patient
+        await db.batch([
+          {
+            sql: `INSERT INTO Users (firstName, lastName, email, password, roleId, matricula) VALUES (?, ?, ?, ?, ?, ?)`,
+            args: [firstName, lastName, email, passwordHash, ROLES.ESTUDIANTE, matricula]
+          },
+          {
+            sql: `INSERT INTO Patients (patientId, isAthlete) VALUES (last_insert_rowid(), 0)`,
+            args: []
+          }
+        ], "write");
+        success = 'Cuenta creada exitosamente. Ya puedes iniciar sesión.';
+      }
+    }
+  } catch (e) {
+    if (e instanceof Error) {
+        error = e.message;
+        if (error.includes('Users.email')) error = 'Este correo ya está registrado.';
+        console.error('Registration error:', e);
+    }
+  }
+}
+---
+
+<AuthLayout title="Registro de Alumno">
+  <div class="glass-strong rounded-2xl p-8 shadow-2xl w-full max-w-lg animate-scale-in relative">
+    <a href="/login" class="absolute top-6 left-6 text-slate-400 hover:text-slate-600 transition-colors">
+      <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m15 18-6-6 6-6"/></svg>
+    </a>
+
+    <div class="w-16 h-16 bg-gradient-to-br from-teal-500 to-emerald-500 rounded-2xl flex items-center justify-center mx-auto mb-6 shadow-lg">
+      <svg xmlns="http://www.w3.org/2000/svg" width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="text-white"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M22 10v6"/><path d="M19 13h6"/></svg>
+    </div>
+    
+    <h1 class="text-2xl font-bold text-center text-slate-800 mb-2 tracking-tight">Registro de Alumno</h1>
+    <p class="text-center text-slate-500 mb-8 text-sm">Crea tu cuenta o activa tu registro médico</p>
+    
+    {error && (
+      <div class="bg-rose-50 border border-rose-200 text-rose-600 px-4 py-3 rounded-xl text-sm mb-6 animate-fade-in shadow-sm flex items-center gap-2">
+        <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="flex-shrink-0"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
+        {error}
+      </div>
+    )}
+    
+    {success && (
+      <div class="bg-emerald-50 border border-emerald-200 text-emerald-600 px-4 py-3 rounded-xl text-sm mb-6 animate-fade-in shadow-sm flex items-center gap-2">
+        <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="flex-shrink-0"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg>
+        {success}
+        <a href="/login" class="ml-auto font-bold underline">Ir al Login</a>
+      </div>
+    )}
+
+    <form method="POST" class="space-y-4">
+      <div class="grid grid-cols-2 gap-4">
+        <div>
+          <label for="firstName" class="block text-sm font-semibold text-slate-700 mb-1.5 ml-1">Nombre(s)</label>
+          <input type="text" name="firstName" id="firstName" class="w-full bg-white/50 border border-slate-200/60 rounded-xl px-4 py-2.5 text-slate-800 focus:outline-none focus:ring-2 focus:ring-teal-500" required />
+        </div>
+        <div>
+          <label for="lastName" class="block text-sm font-semibold text-slate-700 mb-1.5 ml-1">Apellidos</label>
+          <input type="text" name="lastName" id="lastName" class="w-full bg-white/50 border border-slate-200/60 rounded-xl px-4 py-2.5 text-slate-800 focus:outline-none focus:ring-2 focus:ring-teal-500" required />
+        </div>
+      </div>
+
+      <div>
+        <label for="matricula" class="block text-sm font-semibold text-slate-700 mb-1.5 ml-1">Matrícula / ID Institucional</label>
+        <input type="text" name="matricula" id="matricula" placeholder="Ej. 20240001" class="w-full bg-white/50 border border-slate-200/60 rounded-xl px-4 py-2.5 text-slate-800 focus:outline-none focus:ring-2 focus:ring-teal-500 font-mono" required />
+        <p class="text-[10px] text-slate-400 mt-1 px-1">Usa la misma matrícula con la que te registraron en el servicio médico para vincular tu historial.</p>
+      </div>
+
+      <div>
+        <label for="email" class="block text-sm font-semibold text-slate-700 mb-1.5 ml-1">Correo Electrónico</label>
+        <input type="email" name="email" id="email" placeholder="alumno@universidad.edu" class="w-full bg-white/50 border border-slate-200/60 rounded-xl px-4 py-2.5 text-slate-800 focus:outline-none focus:ring-2 focus:ring-teal-500" required />
+      </div>
+
+      <div>
+        <label for="password" class="block text-sm font-semibold text-slate-700 mb-1.5 ml-1">Contraseña</label>
+        <input type="password" name="password" id="password" placeholder="••••••••" class="w-full bg-white/50 border border-slate-200/60 rounded-xl px-4 py-2.5 text-slate-800 focus:outline-none focus:ring-2 focus:ring-teal-500" required />
+      </div>
+      
+      <button type="submit" class="w-full bg-gradient-to-r from-teal-500 to-emerald-500 text-white font-bold py-3.5 px-4 rounded-xl shadow-md hover:shadow-lg transform transition-all active:scale-[0.98] mt-4">
+        Completar Registro
+      </button>
+
+      <div class="text-center mt-6">
+        <p class="text-sm text-slate-500">
+          ¿Ya tienes cuenta? <a href="/login" class="text-teal-600 font-bold hover:underline">Inicia Sesión</a>
+        </p>
+      </div>
+    </form>
+  </div>
+</AuthLayout>

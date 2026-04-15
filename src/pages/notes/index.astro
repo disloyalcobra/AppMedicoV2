@@ -1,62 +1,139 @@
 ---
 import Layout from '../../layouts/Layout.astro';
 import { ROLES, checkRole } from '../../functions/checkRole';
+import { db } from '../../turso';
 
 const user = Astro.locals.user;
 if (!checkRole(user, [ROLES.DOCTOR, ROLES.JEFE_MEDICO, ROLES.NUTRIOLOGO, ROLES.ENTRENADOR, ROLES.ADMINISTRADOR])) {
   return Astro.redirect('/403');
 }
 
-// Mock Data
-const notes = [
-  { id: 1, patient: 'Juan Pérez', author: 'Dra. Silva (Nutrición)', content: 'Paciente con baja ingesta proteica pre-partido. Reportado al entrenador.', isAlert: true, date: '11/03/2026', tags: ['nutrición', 'rendimiento'] },
-  { id: 2, patient: 'María Lozano', author: 'Dr. Gómez (General)', content: 'Presenta leve reacción alérgica en brazo. En observación.', isAlert: true, date: '10/03/2026', tags: ['alergia'] },
-  { id: 3, patient: 'Carlos Ruiz', author: 'Entrenador Luis', content: 'Carga de entrenamiento reducida al 50% por molestia en hombro.', isAlert: false, date: '08/03/2026', tags: ['lesión prevenible'] },
-];
+// 1. Obtención de Datos Reales con Filtrado de Seguridad
+// El médico solo ve notas de alumnos con los que tiene citas, o sus propias notas.
+// El Admin/Jefe ve todo.
+const notesQuery = await db.execute({
+  sql: `
+    SELECT n.noteId as id, n.noteContent as content, n.isAlert, n.alertTags as tags, n.createdAt, n.patientId,
+           up.firstName || ' ' || up.lastName as patientName,
+           ua.firstName || ' ' || ua.lastName as authorName,
+           ra.roleName as authorRole
+    FROM CollaborativeNotes n
+    JOIN Users up ON n.patientId = up.userId
+    JOIN Users ua ON n.authorId = ua.userId
+    JOIN Roles ra ON ua.roleId = ra.roleId
+    WHERE 
+        ? IN (1, 2) -- Admin/Jefe Medico
+        OR n.authorId = ?
+        OR n.patientId IN (SELECT patientId FROM Appointments WHERE doctorId = ?)
+    ORDER BY n.createdAt DESC
+  `,
+  args: [user?.roleId ?? null, user?.userId ?? null, user?.userId ?? null]
+});
+
+const notes = notesQuery.rows;
 ---
 
 <Layout title="Notas y Alertas Clínicas">
   <div class="flex flex-col sm:flex-row justify-between items-start sm:items-center mb-8 gap-4">
     <div>
-      <h1 class="text-3xl font-bold text-slate-800 tracking-tight">Centro de Alertas</h1>
-      <p class="text-slate-500 mt-1">Comunicación interdisciplinaria sobre expedientes</p>
+      <h1 class="text-3xl font-bold text-slate-800 tracking-tight">Centro de Alertas y Seguimiento</h1>
+      <p class="text-slate-500 mt-1">Comunicación interdisciplinaria sobre expedientes clínicos</p>
+    </div>
+
+    {/* Filtros UI Dinámicos */}
+    <div class="flex bg-slate-100 p-1 rounded-xl border border-slate-200">
+      <button class="filter-btn active px-4 py-2 rounded-lg text-xs font-bold uppercase tracking-wider transition-all" data-filter="all">Todas</button>
+      <button class="filter-btn px-4 py-2 rounded-lg text-xs font-bold uppercase tracking-wider transition-all" data-filter="alert">Alertas</button>
+      <button class="filter-btn px-4 py-2 rounded-lg text-xs font-bold uppercase tracking-wider transition-all" data-filter="note">Seguimiento</button>
     </div>
   </div>
 
-  <div class="space-y-4">
+  <div class="grid grid-cols-1 gap-4" id="notesContainer">
     {notes.map(note => (
-      <div class={`glass-card rounded-2xl p-6 relative overflow-hidden group border ${note.isAlert ? 'border-rose-200/60' : 'border-white/60'}`}>
+      <a 
+        href={`/patients/${note.patientId}`}
+        class={`note-card glass-card rounded-2xl p-6 relative overflow-hidden group border transition-all hover:translate-x-1 ${note.isAlert === 1 ? 'border-rose-200/60' : 'border-white/60'}`}
+        data-type={note.isAlert === 1 ? 'alert' : 'note'}
+      >
         
-        {note.isAlert && (
+        {note.isAlert === 1 && (
           <div class="absolute left-0 top-0 bottom-0 w-1.5 bg-gradient-to-b from-rose-400 to-rose-600"></div>
         )}
         
         <div class="flex items-start justify-between mb-3">
           <div class="flex items-center gap-3">
-            <h3 class="text-lg font-bold text-slate-800">{note.patient}</h3>
-            {note.isAlert && (
-               <span class="flex items-center gap-1 bg-rose-50 text-rose-700 text-xs font-bold px-2 py-0.5 rounded border border-rose-200 uppercase tracking-widest">
+            <h3 class="text-lg font-bold text-slate-800 group-hover:text-teal-700 transition-colors uppercase tracking-tight">{note.patientName}</h3>
+            {note.isAlert === 1 && (
+               <span class="flex items-center gap-1 bg-rose-50 text-rose-700 text-[10px] font-bold px-2 py-0.5 rounded border border-rose-200 uppercase tracking-widest animate-pulse">
                   <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
-                  Alerta Importante
+                  Alerta Médica
                </span>
             )}
+            {note.isAlert === 0 && (
+                <span class="bg-indigo-50 text-indigo-700 text-[10px] font-bold px-2 py-0.5 rounded border border-indigo-100 uppercase tracking-widest">
+                  Seguimiento
+                </span>
+            )}
           </div>
-          <p class="text-sm font-semibold text-slate-400">{note.date}</p>
+          <p class="text-xs font-bold text-slate-400">{String(note.createdAt).split(' ')[0]}</p>
         </div>
 
-        <div class="bg-white/40 p-4 rounded-xl border border-white/60 mb-4">
-          <p class="text-slate-700 font-medium leading-relaxed">{note.content}</p>
+        <div class="bg-white/40 p-4 rounded-xl border border-white/60 mb-4 group-hover:bg-white/60 transition-colors">
+          <p class="text-slate-700 font-medium leading-relaxed italic">"{note.content}"</p>
         </div>
 
         <div class="flex items-center justify-between">
           <div class="flex gap-2">
-            {note.tags.map(tag => (
-              <span class="text-xs bg-slate-100/80 text-slate-600 font-semibold px-2 py-1 rounded-md border border-slate-200/60">#{tag}</span>
+            {String(note.tags || "").split(',').filter(t => t.trim()).map((tag: string) => (
+              <span class="text-[10px] bg-slate-100/80 text-slate-600 font-bold px-2 py-1 rounded-md border border-slate-200/60 uppercase tracking-tighter">#{tag.trim()}</span>
             ))}
           </div>
-          <p class="text-sm font-semibold text-teal-700">✍️ {note.author}</p>
+          <div class="text-right">
+             <p class="text-[11px] font-bold text-teal-700 uppercase">{note.authorName}</p>
+             <p class="text-[9px] text-slate-400 font-semibold">{note.authorRole}</p>
+          </div>
         </div>
-      </div>
+      </a>
     ))}
+
+    {notes.length === 0 && (
+        <div class="text-center py-20 bg-slate-50 rounded-3xl border border-dashed border-slate-200">
+            <p class="text-slate-400 font-medium italic">No se encontraron notas o alertas vinculadas a tus pacientes.</p>
+        </div>
+    )}
   </div>
 </Layout>
+
+<style>
+    .filter-btn.active {
+        @apply bg-white text-teal-600 shadow-sm border-slate-200;
+    }
+    .filter-btn:not(.active) {
+        @apply text-slate-400 hover:text-slate-600;
+    }
+</style>
+
+<script>
+    const buttons = document.querySelectorAll('.filter-btn');
+    const cards = document.querySelectorAll('.note-card');
+
+    buttons.forEach(btn => {
+        btn.addEventListener('click', () => {
+            // UI Toggle
+            buttons.forEach(b => b.classList.remove('active'));
+            btn.classList.add('active');
+
+            const filter = btn.getAttribute('data-filter');
+
+            // Filtering logic
+            cards.forEach(card => {
+                const type = card.getAttribute('data-type');
+                if (filter === 'all' || type === filter) {
+                    (card as HTMLElement).style.display = 'block';
+                } else {
+                    (card as HTMLElement).style.display = 'none';
+                }
+            });
+        });
+    });
+</script>

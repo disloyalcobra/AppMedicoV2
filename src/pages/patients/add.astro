@@ -2,17 +2,53 @@
 import Layout from '../../layouts/Layout.astro';
 import PatientForm from '../../components/Patient/PatientForm.astro';
 import { ROLES, checkRole } from '../../functions/checkRole';
+import { db } from '../../turso';
 
 const user = Astro.locals.user;
 if (!checkRole(user, [ROLES.DOCTOR, ROLES.JEFE_MEDICO, ROLES.ADMINISTRADOR])) {
   return Astro.redirect('/403');
 }
 
+let error = '';
+
 if (Astro.request.method === 'POST') {
-  // In a real app we would read formData and insert Turso here
-  // const data = await Astro.request.formData();
-  // turso.execute(...)
-  return Astro.redirect('/patients');
+  try {
+    const data = await Astro.request.formData();
+    const firstName = data.get('firstName') as string;
+    const lastName = data.get('lastName') as string;
+    const matricula = data.get('matricula') as string;
+    const gender = data.get('gender') as string;
+    const dateOfBirth = data.get('dateOfBirth') as string;
+    const bloodType = data.get('bloodType') as string;
+    const weight = data.get('weight') ? Number(data.get('weight')) : null;
+    const height = data.get('height') ? Number(data.get('height')) : null;
+    const allergies = data.get('allergies') as string;
+    const isAthlete = data.get('isAthlete') === '1' ? 1 : 0;
+    const schoolLevel = data.get('schoolLevel') as string;
+
+    // Transaction to ensure both User and Patient are created
+    await db.batch([
+      {
+        sql: `INSERT INTO Users (firstName, lastName, matricula, roleId) VALUES (?, ?, ?, ?)`,
+        args: [firstName, lastName, matricula || null, ROLES.ESTUDIANTE]
+      },
+      {
+        sql: `INSERT INTO Patients (patientId, dateOfBirth, gender, bloodType, allergies, weight, height, isAthlete, schoolLevel)
+              VALUES (last_insert_rowid(), ?, ?, ?, ?, ?, ?, ?, ?)`,
+        args: [dateOfBirth, gender, bloodType, allergies, weight, height, isAthlete, schoolLevel]
+      }
+    ], "write");
+
+    return Astro.redirect('/patients');
+  } catch (e) {
+    if (e instanceof Error) {
+      error = e.message;
+      if (error.includes('UNIQUE constraint failed: Users.matricula')) {
+        error = 'Ya existe un usuario con esa matrícula.';
+      }
+      console.error('Error creating patient:', error);
+    }
+  }
 }
 ---
 
@@ -25,6 +61,13 @@ if (Astro.request.method === 'POST') {
     </div>
     <h1 class="text-3xl font-bold text-slate-800 tracking-tight">Agregar Paciente</h1>
   </div>
+
+  {error && (
+    <div class="bg-rose-50 border border-rose-200 text-rose-600 px-4 py-3 rounded-xl text-sm mb-6 animate-fade-in shadow-sm flex items-center gap-2 max-w-4xl">
+      <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="flex-shrink-0"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
+      {error}
+    </div>
+  )}
 
   <div class="max-w-4xl">
     <PatientForm />

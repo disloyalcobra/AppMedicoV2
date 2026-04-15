@@ -48,10 +48,12 @@ if (Astro.request.method === 'POST') {
   const diagnosis = data.get('diagnosis') as string;
   const date = new Date().toISOString().split('T')[0];
 
-  await db.execute({
+  const result = await db.execute({
     sql: `INSERT INTO Consultations (appointmentId, diagnosis, symptoms, consultationDate) VALUES (?, ?, ?, ?)`,
     args: [finalAptId, diagnosis, symptoms, date]
   });
+
+  const newId = result.lastInsertRowid;
 
   // Marcar cita como completada automáticamente
   await db.execute({
@@ -59,7 +61,7 @@ if (Astro.request.method === 'POST') {
     args: [finalAptId]
   });
 
-  return Astro.redirect(`/patients/${finalPatientId}`);
+  return Astro.redirect(`/consultations/${newId}`);
 }
 
 const patientDataRes = await db.execute({

@@ -8,8 +8,6 @@ if (!checkRole(user, [ROLES.DOCTOR, ROLES.JEFE_MEDICO, ROLES.ADMINISTRADOR, ROLE
   return Astro.redirect('/403');
 }
 
-const isDoctorOrAdmin = [ROLES.DOCTOR, ROLES.JEFE_MEDICO, ROLES.ADMINISTRADOR].includes(user?.roleId as number);
-
 // Obtener todas las consultas con datos del paciente, doctor y conteo de recetas
 const consRes = await db.execute(`
   SELECT 

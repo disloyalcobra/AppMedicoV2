@@ -72,7 +72,7 @@ const patient = {
 
 // B. Citas Médicas (Ordenadas por fecha descendente)
 const aptResult = await db.execute({
-  sql: `SELECT a.appointmentId as id, a.dateTime as date, u.firstName || ' ' || u.lastName as doctor, a.status 
+  sql: `SELECT a.appointmentId as id, a.dateTime as date, u.firstName || ' ' || u.lastName as doctor, a.status, a.reason 
         FROM Appointments a JOIN Users u ON a.doctorId = u.userId 
         WHERE a.patientId = ? ORDER BY a.dateTime DESC`,
   args: [id],
@@ -82,6 +82,7 @@ const appointments = aptResult.rows.map((r) => ({
   date: String(r.date),
   doctor: "Dr. " + r.doctor,
   status: r.status,
+  reason: String(r.reason || "Sin motivo"),
 }));
 
 // C. Consultas Médicas (Incluyendo conteo de sub-elementos vía sub-queries)
@@ -95,16 +96,6 @@ const consResult = await db.execute({
 });
 const consultations = consResult.rows;
 
-// D. Recetas Activas (Relacionando Medicamentos con Consultas)
-const presResult = await db.execute({
-  sql: `SELECT p.prescriptionId as id, m.brandName || ' (' || m.activeIngredient || ')' as med, p.dosage as dose, p.frequency as freq, p.duration, p.consultationId
-        FROM Prescriptions p JOIN Medications m ON p.medicationId = m.medicationId
-        JOIN Consultations c ON p.consultationId = c.consultationId
-        JOIN Appointments a ON c.appointmentId = a.appointmentId
-        WHERE a.patientId = ?`,
-  args: [id],
-});
-const prescriptions = presResult.rows;
 
 // E. Historial de Lesiones
 const injResult = await db.execute({
@@ -114,6 +105,34 @@ const injResult = await db.execute({
 });
 const injuries = injResult.rows;
 
+// F. Notas Colaborativas y Alertas (Nueva funcionalidad)
+const notesResult = await db.execute({
+  sql: `SELECT n.noteId as id, n.noteContent as content, n.isAlert, n.alertTags as tags, n.createdAt, n.status,
+               u.firstName || ' ' || u.lastName as author, r.roleName as authorRole
+        FROM CollaborativeNotes n 
+        JOIN Users u ON n.authorId = u.userId 
+        JOIN Roles r ON u.roleId = r.roleId
+        WHERE n.patientId = ? 
+        ORDER BY n.createdAt DESC`,
+  args: [id],
+});
+const allNotes = notesResult.rows;
+
+// G. Verificación de Vínculo Doctor-Paciente (Seguridad de visibilidad)
+let isLinkedDoctor = false;
+if (user?.roleId === ROLES.DOCTOR) {
+  const linkRes = await db.execute({
+    sql: `SELECT 1 FROM Appointments WHERE doctorId = ? AND patientId = ? LIMIT 1`,
+    args: [user.userId, id]
+  });
+  isLinkedDoctor = linkRes.rows.length > 0;
+}
+
+const canSeeNotes = 
+  user?.roleId === ROLES.ADMINISTRADOR || 
+  user?.roleId === ROLES.JEFE_MEDICO || 
+  isLinkedDoctor;
+
 // --- CONFIGURACIÓN DE PERMISOS DE INTERFAZ ---
 
 const isDoctorOrAdmin =
@@ -122,6 +141,33 @@ const isDoctorOrAdmin =
   user?.roleId === ROLES.JEFE_MEDICO;
 const isStudent = user?.roleId === ROLES.ESTUDIANTE;
 
+// --- PROCESAMIENTO DE ACCIONES (POST) ---
+if (Astro.request.method === 'POST') {
+  const data = await Astro.request.formData();
+  const action = data.get('_action');
+
+  if (action === 'addNote' && isDoctorOrAdmin) {
+    const content = data.get('content') as string;
+    const isAlert = data.get('isAlert') === 'on' ? 1 : 0;
+    const tags = data.get('tags') as string;
+
+    await db.execute({
+      sql: `INSERT INTO CollaborativeNotes (patientId, authorId, noteContent, isAlert, alertTags, status) VALUES (?, ?, ?, ?, ?, 'active')`,
+      args: [id, user?.userId, content, isAlert, tags]
+    });
+    return Astro.redirect(`/patients/${id}`);
+  }
+
+  if (action === 'dismissAlert' && isDoctorOrAdmin) {
+    const noteId = String(data.get('noteId') || "");
+    await db.execute({
+      sql: `UPDATE CollaborativeNotes SET status = 'dismissed' WHERE noteId = ?`,
+      args: [noteId]
+    });
+    return Astro.redirect(`/patients/${id}`);
+  }
+}
+
 // Definición de íconos SVG para uso repetitivo en el template
 const ICONS = {
   plus: '<path d="M5 12h14"/><path d="M12 5v14"/>',
@@ -129,6 +175,7 @@ const ICONS = {
   trash:
     '<path d="M3 6h18"/><path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6"/><path d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2"/><line x1="10" x2="10" y1="11" y2="17"/><line x1="14" x2="14" y1="11" y2="17"/>',
   eye: '<path d="M2 12s3-7 10-7 10 7 10 7-3 7-10 7-10-7-10-7Z"/><circle cx="12" cy="12" r="3"/>',
+  alert: '<path d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3Z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/>',
 };
 ---
 
@@ -197,16 +244,53 @@ const ICONS = {
       }
       {
         isDoctorOrAdmin && (
-          <a
-            href="#alert-modal"
-            class="px-4 py-2 bg-rose-50 border border-rose-200 text-rose-700 font-semibold rounded-xl text-sm hover:bg-rose-100 transition-colors"
+          <button
+            id="openNoteModal"
+            class="px-4 py-2 bg-rose-50 border border-rose-200 text-rose-700 font-semibold rounded-xl text-sm hover:bg-rose-100 transition-colors flex items-center gap-1.5"
           >
-            + Generar Alerta
-          </a>
+            <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m11 2 4 2 2 4v14H5V4l2-2z"/><path d="M19 14H5"/><path d="M12 14v4"/><path d="M10 18h4"/></svg>
+            Alertas y Notas
+          </button>
         )
       }
     </div>
   </div>
+
+  {/* BANNER DE ALERTAS DINÁMICAS (CollaborativeNotes where isAlert=1 and status='active') */}
+  {
+    allNotes.filter(n => n.isAlert === 1 && n.status === 'active').length > 0 && (
+      <div class="mb-8 space-y-3">
+        {allNotes.filter(n => n.isAlert === 1 && n.status === 'active').map(alert => (
+          <div class="flex items-start gap-4 p-4 bg-rose-50 border border-rose-200 rounded-2xl shadow-sm animate-in fade-in slide-in-from-left-4 group/alert">
+             <div class="mt-1 p-2 bg-rose-100 text-rose-600 rounded-lg animate-pulse">
+                <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                  <path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/>
+                </svg>
+             </div>
+             <div class="flex-1">
+                <div class="flex justify-between items-start">
+                  <h4 class="font-bold text-rose-900 text-sm italic uppercase tracking-wider">Alerta Médica: {alert.tags}</h4>
+                  <div class="flex items-center gap-3">
+                    <span class="text-[10px] text-rose-500 font-bold uppercase">{String(alert.createdAt).split(' ')[0]}</span>
+                    {isDoctorOrAdmin && (
+                      <form method="POST" class="opacity-0 group-hover/alert:opacity-100 transition-opacity">
+                        <input type="hidden" name="_action" value="dismissAlert" />
+                        <input type="hidden" name="noteId" value={String(alert.id)} />
+                        <button type="submit" class="p-1 bg-rose-100 text-rose-700 hover:bg-rose-200 rounded-md transition-colors" title="Quitar de alertas">
+                          <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg>
+                        </button>
+                      </form>
+                    )}
+                  </div>
+                </div>
+                <p class="text-rose-800 text-md mt-1 font-medium">{alert.content}</p>
+                <p class="text-[11px] text-rose-400 mt-2">— Reportado por {alert.author} ({alert.authorRole})</p>
+             </div>
+          </div>
+        ))}
+      </div>
+    )
+  }
 
   {/* CAJA DE DATOS RÁPIDOS: Resumen médico preventivo */}
   <div
@@ -295,9 +379,12 @@ const ICONS = {
           appointments.length > 0 ? (
             appointments.map((apt) => (
               <div class="p-4 bg-white/40 rounded-xl border border-white/60 flex justify-between items-center group">
-                <div>
+                <div class="max-w-[60%]">
                   <p class="font-bold text-slate-800 text-sm">{apt.date}</p>
-                  <p class="text-xs text-slate-500 mt-0.5">{apt.doctor}</p>
+                  <p class="text-[11px] text-teal-700 font-bold uppercase mt-0.5">{apt.doctor}</p>
+                  {apt.reason && (
+                    <p class="text-[10px] text-slate-500 italic truncate mt-1">"{apt.reason}"</p>
+                  )}
                 </div>
                 <div class="flex items-center gap-4">
                   <span
@@ -433,128 +520,91 @@ const ICONS = {
       </div>
     </div>
 
-    {/* SECCIÓN RECETAS: Tratamientos farmacológicos activos */}
-    <div class="glass-card rounded-2xl p-6">
-      <div
-        class="flex items-center justify-between mb-4 border-b border-white/40 pb-4"
-      >
-        <h3 class="text-xl font-bold text-slate-800">Recetas Activas</h3>
-        {
-          isDoctorOrAdmin && (
-            <a
-              href={`/prescriptions/add?patientId=${patient.id}`}
-              class="flex items-center gap-1 text-sm bg-teal-50 text-teal-700 px-3 py-1.5 rounded-lg border border-teal-200 font-semibold hover:bg-teal-500 hover:text-white transition-colors"
-            >
-              <svg
-                class="w-4 h-4"
-                viewBox="0 0 24 24"
-                fill="none"
-                stroke="currentColor"
-                stroke-width="2"
-                stroke-linecap="round"
-                stroke-linejoin="round"
-                set:html={ICONS.plus}
-              />
-              Nueva Receta
-            </a>
-          )
-        }
-      </div>
-      <div class="space-y-3">
-        {
-          prescriptions.length > 0 ? (
-            (prescriptions as any[]).map((pres) => (
-              <div class="p-4 bg-white/40 rounded-xl border border-white/60 flex justify-between items-center group">
-                <div class="flex-1 min-w-0">
-                  <p class="font-bold text-slate-800 text-sm truncate">
-                    {pres.med}
-                  </p>
-                  <p class="text-xs text-slate-500 mt-0.5">
-                    {pres.dose} · {pres.freq} · Por {pres.duration}
-                  </p>
-                </div>
-                {isDoctorOrAdmin && (
-                  <div class="flex items-center gap-2 opacity-0 group-hover:opacity-100 transition-opacity ml-3 shrink-0">
-                    <a
-                      href={`/prescriptions/${pres.id}?consultationId=${pres.consultationId}`}
-                      class="w-8 h-8 rounded-lg bg-white border border-slate-200 flex items-center justify-center text-slate-400 hover:text-teal-600 hover:border-teal-300 transition-colors shadow-sm"
-                      title="Editar Receta"
-                    >
-                      <svg
-                        xmlns="http://www.w3.org/2000/svg"
-                        width="14"
-                        height="14"
-                        viewBox="0 0 24 24"
-                        fill="none"
-                        stroke="currentColor"
-                        stroke-width="2"
-                        stroke-linecap="round"
-                        stroke-linejoin="round"
-                      >
-                        <path d="M17 3a2.85 2.83 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5Z" />
-                      </svg>
-                    </a>
-                    <form
-                      method="POST"
-                      action={`/prescriptions/${pres.id}`}
-                      onsubmit="return confirm('¿Eliminar esta receta?')"
-                      style="display:inline"
-                    >
-                      <input type="hidden" name="_action" value="delete" />
-                      <button
-                        type="submit"
-                        class="w-8 h-8 rounded-lg bg-white border border-slate-200 flex items-center justify-center text-slate-400 hover:text-rose-600 hover:border-rose-200 transition-colors shadow-sm"
-                        title="Eliminar Receta"
-                      >
-                        <svg
-                          xmlns="http://www.w3.org/2000/svg"
-                          width="14"
-                          height="14"
-                          viewBox="0 0 24 24"
-                          fill="none"
-                          stroke="currentColor"
-                          stroke-width="2"
-                          stroke-linecap="round"
-                          stroke-linejoin="round"
-                        >
-                          <path d="M3 6h18" />
-                          <path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6" />
-                          <path d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2" />
-                        </svg>
-                      </button>
-                    </form>
-                  </div>
-                )}
-                {isStudent && (
-                  <div class="flex items-center gap-2 opacity-0 group-hover:opacity-100 transition-opacity ml-3 shrink-0">
-                    <a
-                      href={`/consultations/${pres.consultationId}`}
-                      class="w-8 h-8 rounded-lg bg-white border border-slate-200 flex items-center justify-center text-slate-400 hover:text-teal-600 hover:border-teal-300 transition-colors shadow-sm"
-                      title="Ver Detalles de Consulta"
-                    >
-                      <svg
-                        class="w-4 h-4"
-                        viewBox="0 0 24 24"
-                        fill="none"
-                        stroke="currentColor"
-                        stroke-width="2"
-                        stroke-linecap="round"
-                        stroke-linejoin="round"
-                        set:html={ICONS.eye}
-                      />
-                    </a>
-                  </div>
-                )}
-              </div>
-            ))
-          ) : (
-            <div class="text-sm text-slate-500 py-2">
-              No hay recetas activas.
+
+    {/* SECCIÓN NOTAS MÉDICAS: Seguimiento colaborativo entre doctores */}
+    {
+      canSeeNotes && (
+        <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+          {/* SECCIÓN NOTAS MÉDICAS: Seguimiento colaborativo entre doctores */}
+          <div class="glass-card rounded-2xl p-6">
+            <div class="flex items-center justify-between mb-4 border-b border-white/40 pb-4">
+              <h3 class="text-xl font-bold text-slate-800">Notas de Seguimiento</h3>
+              <span class="text-[10px] bg-slate-100 text-slate-500 px-2 py-0.5 rounded font-bold uppercase tracking-widest">Informativas</span>
             </div>
-          )
-        }
-      </div>
-    </div>
+            <div class="space-y-4 max-h-[400px] overflow-y-auto pr-2 custom-scrollbar">
+              {
+                allNotes.filter(n => n.isAlert === 0).length > 0 ? (
+                  allNotes.filter(n => n.isAlert === 0).map((note) => (
+                    <div class="p-4 bg-white/40 rounded-xl border border-white/60 relative group">
+                      <div class="flex justify-between items-start mb-1">
+                        <p class="text-[11px] font-bold text-teal-700 uppercase tracking-tighter">{note.author} ({note.authorRole})</p>
+                        <p class="text-[10px] text-slate-400">{String(note.createdAt).split(' ')[0]}</p>
+                      </div>
+                      <p class="text-sm text-slate-700 italic">"{note.content}"</p>
+                      {note.tags && (
+                        <div class="mt-2 flex gap-1">
+                          {String(note.tags).split(',').filter(t => t.trim()).map((tag: string) => (
+                            <span class="text-[9px] bg-slate-200 text-slate-600 px-1.5 py-0.5 rounded-md font-bold uppercase">{tag.trim()}</span>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                  ))
+                ) : (
+                  <div class="text-sm text-slate-500 py-2 italic text-center">
+                    No hay notas de seguimiento privadas para este alumno.
+                  </div>
+                )
+              }
+            </div>
+          </div>
+
+          {/* SECCIÓN HISTORIAL DE ALERTAS: Registro histórico de prioridades */}
+          <div class="glass-card rounded-2xl p-6 border-rose-100">
+            <div class="flex items-center justify-between mb-4 border-b border-white/40 pb-4">
+              <div class="flex items-center gap-2">
+                 <svg class="w-5 h-5 text-rose-500" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" set:html={ICONS.alert} />
+                 <h3 class="text-xl font-bold text-slate-800">Historial de Alertas</h3>
+              </div>
+              <span class="text-[10px] bg-rose-50 text-rose-600 px-2 py-0.5 rounded font-bold uppercase tracking-widest">Clínicas</span>
+            </div>
+            <div class="space-y-4 max-h-[400px] overflow-y-auto pr-2 custom-scrollbar">
+              {
+                allNotes.filter(n => n.isAlert === 1).length > 0 ? (
+                  allNotes.filter(n => n.isAlert === 1).map((note) => (
+                    <div class={`p-4 rounded-xl border relative group ${note.status === 'active' ? 'bg-rose-50/50 border-rose-200' : 'bg-slate-50/50 border-slate-200 opacity-80'}`}>
+                      <div class="flex justify-between items-start mb-1">
+                        <p class="text-[11px] font-bold text-rose-800 uppercase tracking-tighter">{note.author} ({note.authorRole})</p>
+                        <div class="flex gap-2 items-center">
+                          {note.status === 'active' ? (
+                            <span class="text-[8px] bg-rose-500 text-white px-1.5 py-0.5 rounded-full font-bold uppercase animate-pulse">Activa</span>
+                          ) : (
+                             <span class="text-[8px] bg-slate-200 text-slate-500 px-1.5 py-0.5 rounded-full font-bold uppercase">Quitada</span>
+                          )}
+                          <p class="text-[10px] text-slate-400">{String(note.createdAt).split(' ')[0]}</p>
+                        </div>
+                      </div>
+                      <p class="text-sm text-slate-700 font-medium">"{note.content}"</p>
+                      {note.tags && (
+                        <div class="mt-2 flex gap-1">
+                          {String(note.tags).split(',').filter(t => t.trim()).map((tag: string) => (
+                            <span class="text-[9px] bg-rose-100 text-rose-600 px-1.5 py-0.5 rounded-md font-bold uppercase">{tag.trim()}</span>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                  ))
+                ) : (
+                  <div class="text-sm text-slate-500 py-2 italic text-center">
+                    No se han registrado alertas clínicas para este alumno.
+                  </div>
+                )
+              }
+            </div>
+          </div>
+        </div>
+      )
+    }
 
     {/* SECCIÓN LESIONES: Incidentes físicos y recuperación */}
     <div class="glass-card rounded-2xl p-6">
@@ -651,4 +701,82 @@ const ICONS = {
       </div>
     </div>
   </div>
+
+  {/* MODAL DE NOTAS Y ALERTAS */}
+  <div id="noteModal" class="fixed inset-0 bg-slate-900/40 backdrop-blur-sm z-50 hidden flex items-center justify-center p-4">
+    <div class="bg-white rounded-3xl shadow-2xl w-full max-w-lg overflow-hidden animate-in zoom-in-95 duration-200">
+      <div class="p-6 border-b border-slate-100 flex justify-between items-center bg-slate-50">
+        <h3 class="font-bold text-xl text-slate-800">Nueva Nota / Alerta</h3>
+        <button id="closeNoteModal" class="text-slate-400 hover:text-slate-600 transition-colors">
+          <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg>
+        </button>
+      </div>
+      <form method="POST" class="p-6 space-y-4">
+        <input type="hidden" name="_action" value="addNote" />
+        
+        <div>
+          <label class="block text-sm font-semibold text-slate-700 mb-1.5 capitalize">Contenido de la nota</label>
+          <textarea 
+            name="content" 
+            required 
+            rows="4" 
+            class="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-3 text-slate-700 focus:outline-none focus:ring-2 focus:ring-teal-500 transition-all"
+            placeholder="Introduce los detalles médicos o de seguimiento..."
+          ></textarea>
+        </div>
+
+        <div class="grid grid-cols-2 gap-4">
+          <div>
+            <label class="block text-sm font-semibold text-slate-700 mb-1.5">Etiquetas (opcional)</label>
+            <input 
+              type="text" 
+              name="tags" 
+              class="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-2 text-slate-700 focus:outline-none focus:ring-2 focus:ring-teal-500"
+              placeholder="Ej: Dieta, Crónico"
+            />
+          </div>
+          <div class="flex items-center gap-3 pt-6">
+            <input 
+              type="checkbox" 
+              name="isAlert" 
+              id="isAlertCheck"
+              class="w-5 h-5 text-rose-600 border-slate-300 rounded focus:ring-rose-500"
+            />
+            <label for="isAlertCheck" class="text-sm font-bold text-rose-700 cursor-pointer">Marcar como ALERTA</label>
+          </div>
+        </div>
+
+        <div class="pt-4 flex gap-3">
+           <button type="button" id="cancelNoteModal" class="flex-1 py-3 border border-slate-200 text-slate-500 font-bold rounded-xl hover:bg-slate-50 transition-colors">Cancelar</button>
+           <button type="submit" class="flex-1 py-3 bg-gradient-to-r from-teal-500 to-emerald-600 text-white font-bold rounded-xl shadow-lg hover:shadow-teal-500/20 transition-all active:scale-[0.98]">Guardar Nota</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
 </Layout>
+
+<script>
+  const openBtn = document.getElementById('openNoteModal');
+  const closeBtn = document.getElementById('closeNoteModal');
+  const cancelBtn = document.getElementById('cancelNoteModal');
+  const modal = document.getElementById('noteModal');
+
+  openBtn?.addEventListener('click', () => {
+    modal?.classList.remove('hidden');
+    document.body.style.overflow = 'hidden';
+  });
+
+  const closeModal = () => {
+    modal?.classList.add('hidden');
+    document.body.style.overflow = '';
+  };
+
+  closeBtn?.addEventListener('click', closeModal);
+  cancelBtn?.addEventListener('click', closeModal);
+
+  // Cerrar al hacer clic fuera del modal
+  modal?.addEventListener('click', (e) => {
+    if (e.target === modal) closeModal();
+  });
+</script>

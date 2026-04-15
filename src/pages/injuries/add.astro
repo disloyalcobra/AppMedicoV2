@@ -69,7 +69,7 @@ if (Astro.request.method === 'POST') {
     });
     
     // Creamos una nota de alerta para el dashboard de cada entrenador
-    for (const coach of coachesResult.rows) {
+    for (const _ of coachesResult.rows) {
        await db.execute({
          sql: `INSERT INTO CollaborativeNotes (patientId, authorId, noteContent, isAlert, alertTags)
                VALUES (?, ?, ?, 1, 'lesión')`,

@@ -18,15 +18,16 @@ if (Astro.request.method === 'POST') {
       const email = data.get('email') as string;
       const plainPassword = data.get('password') as string;
       const roleId = Number(data.get('roleId'));
+      const matricula = data.get('matricula') as string;
       
       // Hash Password
       const salt = await bcrypt.genSalt(10);
       const passwordHash = await bcrypt.hash(plainPassword, salt);
       
       await db.execute({
-        sql: `INSERT INTO Users (firstName, lastName, email, password, roleId)
-              VALUES (?, ?, ?, ?, ?)`,
-        args: [firstName, lastName, email, passwordHash, roleId]
+        sql: `INSERT INTO Users (firstName, lastName, email, password, roleId, matricula)
+              VALUES (?, ?, ?, ?, ?, ?)`,
+        args: [firstName, lastName, email, passwordHash, roleId, matricula || null]
       });
 
       // Special case: If user is an Athlete (Student), we should automatically create their Patient record too.
@@ -75,6 +76,11 @@ if (Astro.request.method === 'POST') {
             <label class="block text-sm font-semibold text-slate-700 mb-1.5 ml-1">Contraseña Inicial</label>
             <input type="password" name="password" required class="w-full bg-white/80 border border-slate-200/60 rounded-xl px-4 py-2.5 text-slate-800 focus:outline-none focus:ring-2 focus:ring-teal-500 shadow-sm" placeholder="*********" />
           </div>
+      </div>
+
+      <div class="mb-5">
+        <label class="block text-sm font-semibold text-slate-700 mb-1.5 ml-1">Matrícula (Solo para alumnos)</label>
+        <input type="text" name="matricula" class="w-full bg-white/80 border border-slate-200/60 rounded-xl px-4 py-2.5 text-slate-800 focus:outline-none focus:ring-2 focus:ring-teal-500 shadow-sm" placeholder="Ej. 20240001" />
       </div>
       
       <div class="mb-5">

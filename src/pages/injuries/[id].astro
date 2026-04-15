@@ -44,11 +44,6 @@ if (Astro.request.method === 'POST' && (isDoctorOrAdmin || user?.roleId === ROLE
     return Astro.redirect(`/injuries/${id}`);
 }
 
-const severityStyles: any = {
-  'Leve': 'bg-sky-50 text-sky-700 border-sky-200',
-  'Moderada': 'bg-amber-50 text-amber-700 border-amber-200',
-  'Grave': 'bg-rose-50 text-rose-700 border-rose-200'
-};
 ---
 
 <Layout title={`Detalle de Lesión: ${injury.injuryType}`}>

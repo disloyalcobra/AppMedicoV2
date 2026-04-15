@@ -35,9 +35,7 @@ const alertsRes = await db.execute(`
 `);
 const activeAlerts = Number(alertsRes.rows[0].total);
 
-// 4. Doctores Totales
-const docsRes = await db.execute(`SELECT COUNT(*) as total FROM Users WHERE roleId = 3`);
-// const activeDoctors = Number(docsRes.rows[0].total);
+// 4. Doctores Totales (Opcional: No se usa actualmente)
 
 const stats = [
   { title: 'Pacientes Totales', value: totalPatients, icon: ICONS.users, trend: 'Global', color: 'from-amber-500 to-orange-500', href: '/patients' },
