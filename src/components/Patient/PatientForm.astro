@@ -124,7 +124,8 @@ const { coaches = [] } = Astro.props;
   const athleteFields = document.getElementById('athleteFields');
 
   isAthleteToggle?.addEventListener('change', (e) => {
-    if (e.target.checked) {
+    const target = e.target as HTMLInputElement | null;
+    if (target?.checked) {
       athleteFields?.classList.remove('hidden');
     } else {
       athleteFields?.classList.add('hidden');
