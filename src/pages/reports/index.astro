@@ -1,44 +1,104 @@
 ---
 import Layout from '../../layouts/Layout.astro';
 import { ROLES, checkRole } from '../../functions/checkRole';
+import { db } from '../../turso';
 
 const user = Astro.locals.user;
-if (!checkRole(user, [ROLES.JEFE_MEDICO, ROLES.ADMINISTRADOR])) {
+if (!checkRole(user, [ROLES.JEFE_MEDICO, ROLES.ADMINISTRADOR, ROLES.DOCTOR])) {
   return Astro.redirect('/403');
 }
 
-// MOCK DATA for Reports
-const injuriesData = [
+const isDoctor = user?.roleId === ROLES.DOCTOR;
+
+let cardsData: any = {};
+let injuriesData = [
   { sport: 'Fútbol', count: 12, color: 'bg-emerald-500' },
   { sport: 'Básquetbol', count: 8, color: 'bg-amber-500' },
   { sport: 'Béisbol', count: 5, color: 'bg-rose-500' },
   { sport: 'Tenis', count: 3, color: 'bg-sky-500' }
 ];
 
-const maxInjuries = Math.max(...injuriesData.map(d => d.count));
-
-const weeklyAppointments = [
-  { day: 'Lun', value: 45 },
-  { day: 'Mar', value: 52 },
-  { day: 'Mié', value: 38 },
-  { day: 'Jue', value: 65 },
-  { day: 'Vie', value: 48 },
+let weeklyAppointments = [
+  { day: 'Lun', value: 15 },
+  { day: 'Mar', value: 22 },
+  { day: 'Mié', value: 18 },
+  { day: 'Jue', value: 25 },
+  { day: 'Vie', value: 18 },
 ];
-const maxApt = Math.max(...weeklyAppointments.map(d => d.value));
+
+if (isDoctor && user?.userId) {
+    // 1. Total pacientes
+    const patRes = await db.execute({
+        sql: `SELECT COUNT(*) as count FROM User_Patient WHERE userId = ? AND roleType = 'Doctor'`,
+        args: [user.userId]
+    });
+    const totalPatients = Number(patRes.rows[0].count);
+
+    // 2. Citas Generadas
+    const aptRes = await db.execute({
+        sql: `SELECT COUNT(*) as count FROM Appointments WHERE doctorId = ?`,
+        args: [user.userId]
+    });
+    const totalAppointments = Number(aptRes.rows[0].count);
+
+    // 3. Total medicamentos recetados por este doctor
+    const medRes = await db.execute({
+        sql: `SELECT COUNT(pi.itemId) as count 
+              FROM PrescriptionItems pi
+              JOIN Prescriptions p ON pi.prescriptionId = p.prescriptionId
+              JOIN Consultations c ON p.consultationId = c.consultationId
+              WHERE c.doctorId = ?`,
+        args: [user.userId]
+    });
+    const totalMeds = Number(medRes.rows[0].count);
+
+    cardsData = {
+        card1: { title: "Pacientes Propios", value: totalPatients, desc: "Bajo tu supervisión directa.", color: "rose", url: "/patients" },
+        card2: { title: "Citas Atendidas", value: totalAppointments, desc: "Histórico total de consultas agendadas.", color: "sky", url: "/appointments" },
+        card3: { title: "Medicinas Recetadas", value: totalMeds, desc: "Artículos médicos prescritos.", color: "amber", url: null }
+    };
+    
+    // Para simplificar, la gráfica semanal del doctor será mockeada pero escalada a valores típicos de 1 doctor
+    weeklyAppointments = [
+      { day: 'Lun', value: 4 },
+      { day: 'Mar', value: 6 },
+      { day: 'Mié', value: 3 },
+      { day: 'Jue', value: 8 },
+      { day: 'Vie', value: 5 },
+    ];
+    
+} else {
+    // MOCK DATA for Admin representing general DB
+    weeklyAppointments = [
+      { day: 'Lun', value: 45 },
+      { day: 'Mar', value: 52 },
+      { day: 'Mié', value: 38 },
+      { day: 'Jue', value: 65 },
+      { day: 'Vie', value: 48 },
+    ];
+    cardsData = {
+        card1: { title: "Stock Crítico", value: "12", desc: "Medicamentos por debajo del nivel de reordenamiento.", color: "rose", url: "/medications" },
+        card2: { title: "Tiempo Promedio Espera", value: "14 min", desc: "Promedio general en salas de espera.", color: "sky", url: null },
+        card3: { title: "Altas Nutricionales", value: "24", desc: "Estudiantes que lograron su meta este semestre.", color: "amber", url: null }
+    };
+}
+
+let maxInjuries = Math.max(...injuriesData.map(d => d.count), 1);
+let maxApt = Math.max(...weeklyAppointments.map(d => d.value), 1);
 
 ---
 
 <Layout title="Reportes y Estadísticas">
   <div class="mb-8">
-    <h1 class="text-3xl font-bold text-slate-800 tracking-tight">Reportes del Sistema</h1>
-    <p class="text-slate-500 mt-1">Estadísticas globales de clínicas, lesiones e inventario</p>
+    <h1 class="text-3xl font-bold text-slate-800 tracking-tight">{isDoctor ? 'Mi Actividad Profesional' : 'Reportes del Sistema'}</h1>
+    <p class="text-slate-500 mt-1">{isDoctor ? 'Estadísticas de tu desempeño y atenciones como médico.' : 'Estadísticas globales de clínicas, lesiones e inventario'}</p>
   </div>
 
   <div class="grid grid-cols-1 lg:grid-cols-2 gap-8 mb-8">
     
     <!-- Gráfica de Barras Horizontales: Lesiones por Deporte -->
     <div class="glass-card rounded-2xl p-6">
-      <h3 class="text-xl font-bold text-slate-800 mb-6">Lesiones por Deporte</h3>
+      <h3 class="text-xl font-bold text-slate-800 mb-6">Lesiones por Deporte {isDoctor && '(Global)'}</h3>
       <div class="space-y-5">
         {injuriesData.map(item => (
           <div>
@@ -80,22 +140,25 @@ const maxApt = Math.max(...weeklyAppointments.map(d => d.value));
     </div>
   </div>
 
-  <!-- Tarjetas Informativas Extra -->
+  <!-- Tarjetas Informativas -->
   <div class="grid grid-cols-1 md:grid-cols-3 gap-6">
-    <div class="glass-card rounded-2xl p-6 border-l-4 border-l-rose-500">
-      <h4 class="text-slate-500 font-semibold mb-1 uppercase tracking-wider text-xs">Stock Crítico</h4>
-      <p class="text-3xl font-bold text-slate-800 mb-2">12</p>
-      <p class="text-sm text-slate-500">Medicamentos por debajo del nivel de reordenamiento.</p>
+    <div class={`glass-card rounded-2xl p-6 border-l-4 border-l-${cardsData.card1.color}-500 group relative`}>
+      <h4 class="text-slate-500 font-semibold mb-1 uppercase tracking-wider text-xs">{cardsData.card1.title}</h4>
+      <p class="text-3xl font-bold text-slate-800 mb-2">{cardsData.card1.value}</p>
+      <p class="text-sm text-slate-500">{cardsData.card1.desc}</p>
+      {cardsData.card1.url && <a href={cardsData.card1.url} class="absolute inset-0 z-10 block"></a>}
     </div>
-    <div class="glass-card rounded-2xl p-6 border-l-4 border-l-sky-500">
-      <h4 class="text-slate-500 font-semibold mb-1 uppercase tracking-wider text-xs">Tiempo Promedio Espera</h4>
-      <p class="text-3xl font-bold text-slate-800 mb-2">14 <span class="text-lg">min</span></p>
-      <p class="text-sm text-slate-500">Promedio general en salas de espera.</p>
+    <div class={`glass-card rounded-2xl p-6 border-l-4 border-l-${cardsData.card2.color}-500 group relative`}>
+      <h4 class="text-slate-500 font-semibold mb-1 uppercase tracking-wider text-xs">{cardsData.card2.title}</h4>
+      <p class="text-3xl font-bold text-slate-800 mb-2" set:html={cardsData.card2.value}></p>
+      <p class="text-sm text-slate-500">{cardsData.card2.desc}</p>
+      {cardsData.card2.url && <a href={cardsData.card2.url} class="absolute inset-0 z-10 block"></a>}
     </div>
-    <div class="glass-card rounded-2xl p-6 border-l-4 border-l-amber-500">
-      <h4 class="text-slate-500 font-semibold mb-1 uppercase tracking-wider text-xs">Altas Nutricionales</h4>
-      <p class="text-3xl font-bold text-slate-800 mb-2">24</p>
-      <p class="text-sm text-slate-500">Estudiantes que lograron su meta este semestre.</p>
+    <div class={`glass-card rounded-2xl p-6 border-l-4 border-l-${cardsData.card3.color}-500 group relative`}>
+      <h4 class="text-slate-500 font-semibold mb-1 uppercase tracking-wider text-xs">{cardsData.card3.title}</h4>
+      <p class="text-3xl font-bold text-slate-800 mb-2">{cardsData.card3.value}</p>
+      <p class="text-sm text-slate-500">{cardsData.card3.desc}</p>
+      {cardsData.card3.url && <a href={cardsData.card3.url} class="absolute inset-0 z-10 block"></a>}
     </div>
   </div>
 </Layout>

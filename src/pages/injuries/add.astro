@@ -64,7 +64,7 @@ if (Astro.request.method === 'POST') {
     
     // Obtenemos los IDs de entrenadores vinculados a este atleta
     const coachesResult = await db.execute({
-      sql: `SELECT coachId FROM Coach_Athlete WHERE patientId = ?`,
+      sql: `SELECT userId as coachId FROM User_Patient WHERE patientId = ? AND roleType = 'Coach'`,
       args: [finalPatientId]
     });
     

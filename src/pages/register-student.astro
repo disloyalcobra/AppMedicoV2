@@ -7,6 +7,22 @@ import bcrypt from 'bcryptjs';
 let error = '';
 let success = '';
 
+interface Coach {
+  userId: number;
+  firstName: string;
+  lastName: string;
+}
+
+const coachesRes = await db.execute({
+  sql: `SELECT userId, firstName, lastName FROM Users WHERE roleId = ?`,
+  args: [ROLES.ENTRENADOR]
+});
+const coaches: Coach[] = coachesRes.rows.map((r: any) => ({
+  userId: Number(r.userId),
+  firstName: String(r.firstName),
+  lastName: String(r.lastName),
+}));
+
 if (Astro.request.method === 'POST') {
   try {
     const data = await Astro.request.formData();
@@ -23,6 +39,7 @@ if (Astro.request.method === 'POST') {
     const allergies = data.get('allergies') as string;
     const schoolLevel = data.get('schoolLevel') as string;
     const isAthlete = data.get('isAthlete') === '1' ? 1 : 0;
+    const coachId = data.get('coachId') ? Number(data.get('coachId')) : null;
 
     if (!matricula || !email || !password || !firstName || !lastName || !gender || !dateOfBirth) {
       error = 'Por favor completa todos los campos obligatorios.';
@@ -51,6 +68,17 @@ if (Astro.request.method === 'POST') {
             args: [dateOfBirth, gender, bloodType, allergies, weight, height, isAthlete, schoolLevel]
           }
         ], "write");
+
+        if (isAthlete === 1 && coachId) {
+            const patientIdResult = await db.execute({ sql: `SELECT userId FROM Users WHERE email = ?`, args: [email]});
+            if(patientIdResult.rows.length > 0) {
+               const newPatientId = Number(patientIdResult.rows[0].userId);
+               await db.execute({
+                sql: `INSERT INTO User_Patient (userId, patientId, roleType) VALUES (?, ?, 'Coach')`,
+                args: [coachId, newPatientId]
+               });
+            }
+        }
 
         success = 'Cuenta creada exitosamente. Ya puedes iniciar sesión.';
       }
@@ -200,6 +228,16 @@ if (Astro.request.method === 'POST') {
             <div class="w-11 h-6 bg-slate-200 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-amber-300 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-amber-500"></div>
           </label>
         </div>
+
+        <div id="coachSelection" class="hidden border-t border-amber-200/60 pt-4 mt-4">
+            <label for="coachId" class="block text-sm font-semibold text-amber-900 mb-1.5 ml-1">Selecciona tu Entrenador</label>
+            <select name="coachId" id="coachId" class="w-full bg-white/70 border border-amber-200/60 rounded-xl px-4 py-2.5 text-slate-800 focus:outline-none focus:ring-2 focus:ring-amber-500">
+              <option value="">No tengo entrenador asignado / No sé</option>
+              {coaches.map(coach => (
+                <option value={coach.userId}>{coach.firstName} {coach.lastName}</option>
+              ))}
+            </select>
+        </div>
       </div>
 
       <button type="submit" class="w-full bg-gradient-to-r from-teal-500 to-emerald-500 text-white font-bold py-3.5 px-4 rounded-xl shadow-md hover:shadow-lg transform transition-all active:scale-[0.98]">
@@ -214,3 +252,20 @@ if (Astro.request.method === 'POST') {
     </form>
   </div>
 </AuthLayout>
+
+<script>
+  document.addEventListener('DOMContentLoaded', () => {
+    const toggle = document.getElementById('isAthleteToggle') as HTMLInputElement;
+    const coachSelection = document.getElementById('coachSelection');
+    
+    if(toggle && coachSelection) {
+      toggle.addEventListener('change', (e) => {
+        if ((e.target as HTMLInputElement).checked) {
+          coachSelection.classList.remove('hidden');
+        } else {
+          coachSelection.classList.add('hidden');
+        }
+      });
+    }
+  });
+</script>

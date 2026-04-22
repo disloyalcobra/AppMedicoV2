@@ -10,6 +10,7 @@ if (!checkRole(user, [ROLES.NUTRIOLOGO, ROLES.DOCTOR, ROLES.JEFE_MEDICO])) {
 
 const url = Astro.url;
 const editPlanId = url.searchParams.get('edit');
+const patientId = url.searchParams.get('patientId');
 
 // Fetch existing plan if in edit mode
 let existingPlan: any = null;

@@ -13,10 +13,10 @@ const ICONS = {
 // Atletas asignados al coach
 const athletesRes = await db.execute({
   sql: `SELECT p.patientId, u.firstName, u.lastName, p.isAthlete
-        FROM Coach_Athlete ca
+        FROM User_Patient ca
         JOIN Patients p ON ca.patientId = p.patientId
         JOIN Users u ON p.patientId = u.userId
-        WHERE ca.coachId = ?`,
+        WHERE ca.userId = ? AND ca.roleType = 'Coach'`,
   args: [user.userId]
 });
 const athletes = athletesRes.rows;
