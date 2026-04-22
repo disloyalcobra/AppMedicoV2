@@ -19,26 +19,54 @@ if (!checkRole(user, [ROLES.NUTRIOLOGO, ROLES.DOCTOR, ROLES.JEFE_MEDICO, ROLES.A
  * Incluye subconsultas para traer el IMC más reciente de los seguimientos (FollowUps)
  * y verificar si ya existe un plan de nutrición activo.
  */
-const profilesRes = await db.execute(`
-  SELECT 
-    p.patientId, 
-    u.firstName, 
-    u.lastName, 
-    p.isAthlete,
-    np.profileId, 
-    np.nutritionalDiagnosis,
-    np.metabolicRisk,
-    np.bodyFatPercentage,
-    np.createdAt as date,
-    -- Obtenemos el último IMC registrado en los seguimientos de su plan más reciente
-    (SELECT currentBmi FROM NutritionalFollowUps WHERE planId = (SELECT planId from NutritionalPlans WHERE patientId = p.patientId ORDER BY creationDate DESC LIMIT 1) ORDER BY followUpDate DESC LIMIT 1) as latestBmi,
-    -- Verificamos si tiene un plan asignado
-    (SELECT planId FROM NutritionalPlans WHERE patientId = p.patientId ORDER BY creationDate DESC LIMIT 1) as planId
-  FROM Patients p
-  JOIN Users u ON p.patientId = u.userId
-  LEFT JOIN NutritionalProfiles np ON p.patientId = np.patientId
-  ORDER BY np.createdAt DESC NULLS LAST
-`);
+const isNutritionist = user?.roleId === ROLES.NUTRIOLOGO;
+
+let profilesRes;
+
+if (isNutritionist) {
+  // Nutriólogo: solo ve sus propios pacientes asignados vía User_Patient
+  profilesRes = await db.execute({
+    sql: `SELECT 
+      p.patientId, 
+      u.firstName, 
+      u.lastName, 
+      p.isAthlete,
+      np.profileId, 
+      np.nutritionalDiagnosis,
+      np.metabolicRisk,
+      np.bodyFatPercentage,
+      np.createdAt as date,
+      (SELECT currentBmi FROM NutritionalFollowUps WHERE planId = (SELECT planId from NutritionalPlans WHERE patientId = p.patientId ORDER BY creationDate DESC LIMIT 1) ORDER BY followUpDate DESC LIMIT 1) as latestBmi,
+      (SELECT planId FROM NutritionalPlans WHERE patientId = p.patientId ORDER BY creationDate DESC LIMIT 1) as planId
+    FROM Patients p
+    JOIN Users u ON p.patientId = u.userId
+    JOIN User_Patient up ON p.patientId = up.patientId
+    LEFT JOIN NutritionalProfiles np ON p.patientId = np.patientId
+    WHERE up.userId = ? AND up.roleType = 'Nutritionist'
+    ORDER BY u.firstName ASC, u.lastName ASC`,
+    args: [Number(user?.userId)]
+  });
+} else {
+  // Admin / Jefe Médico / Doctor / Entrenador: ven todos
+  profilesRes = await db.execute(`
+    SELECT 
+      p.patientId, 
+      u.firstName, 
+      u.lastName, 
+      p.isAthlete,
+      np.profileId, 
+      np.nutritionalDiagnosis,
+      np.metabolicRisk,
+      np.bodyFatPercentage,
+      np.createdAt as date,
+      (SELECT currentBmi FROM NutritionalFollowUps WHERE planId = (SELECT planId from NutritionalPlans WHERE patientId = p.patientId ORDER BY creationDate DESC LIMIT 1) ORDER BY followUpDate DESC LIMIT 1) as latestBmi,
+      (SELECT planId FROM NutritionalPlans WHERE patientId = p.patientId ORDER BY creationDate DESC LIMIT 1) as planId
+    FROM Patients p
+    JOIN Users u ON p.patientId = u.userId
+    LEFT JOIN NutritionalProfiles np ON p.patientId = np.patientId
+    ORDER BY u.firstName ASC, u.lastName ASC
+  `);
+}
 
 const patients = profilesRes.rows;
 ---
@@ -57,18 +85,18 @@ const patients = profilesRes.rows;
     </a>
   </div>
 
-  {/* Grid de Tarjetas de Pacientes */}
-  <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+  {/* Grid de Tarjetas de Pacientes - Masonry Layout */}
+  <div class="columns-1 md:columns-2 lg:columns-3 gap-6">
     {patients.length === 0 ? (
-      <div class="col-span-1 md:col-span-2 lg:col-span-3 text-center py-10 text-slate-500">
+      <div class="w-full text-center py-10 text-slate-500 break-inside-avoid">
         No hay pacientes registrados en el sistema.
       </div>
     ) : (
       patients.map(p => (
         /* Navegación inteligente: si no tiene perfil, lo manda a crear uno */
-        <a href={p.profileId ? `/nutrition/profiles/${p.profileId}` : `/nutrition/profiles/add?patientId=${p.patientId}`} class="block group">
-          <div class="glass-card rounded-2xl p-6 transition-all duration-300 group-hover:scale-[1.02] group-hover:shadow-xl relative overflow-hidden border border-white/80 h-full flex flex-col">
-            
+        <a href={p.profileId ? `/nutrition/profiles/${p.profileId}` : `/nutrition/profiles/add?patientId=${p.patientId}`} class="block group break-inside-avoid mb-6">
+          <div class="glass-card rounded-2xl p-6 transition-all duration-300 group-hover:scale-[1.02] group-hover:shadow-xl relative overflow-hidden border border-white/80 flex flex-col">
+
             {/* Badge de Atleta */}
             {p.isAthlete === 1 && (
               <div class="absolute top-4 right-4 bg-amber-100 text-amber-800 text-[10px] font-bold px-2 py-1 rounded-full border border-amber-200 uppercase tracking-widest flex items-center gap-1">
@@ -76,20 +104,22 @@ const patients = profilesRes.rows;
               </div>
             )}
 
+            {/* Header - Info del paciente */}
             <div class="flex items-center gap-4 mb-5">
-              <div class={`w-14 h-14 rounded-full flex items-center justify-center text-xl font-bold shadow-sm border ${p.profileId ? 'bg-emerald-50 text-emerald-700 border-emerald-200' : 'bg-slate-100 text-slate-500 border-slate-200'}`}>
+              <div class={`w-14 h-14 rounded-full flex items-center justify-center text-xl font-bold shadow-sm border shrink-0 ${p.profileId ? 'bg-emerald-50 text-emerald-700 border-emerald-200' : 'bg-slate-100 text-slate-500 border-slate-200'}`}>
                 {String(p.firstName)[0]}{String(p.lastName)[0]}
               </div>
-              <div class="pr-10">
+              <div class="pr-10 min-w-0">
                 <h3 class="text-lg font-bold text-slate-800 leading-tight truncate">{p.firstName} {p.lastName}</h3>
                 <p class="text-xs text-slate-500 font-medium mt-0.5">Exp. #{String(p.patientId).padStart(4, '0')}</p>
               </div>
             </div>
 
-            <div class="flex-1">
+            {/* Body - Contenido con altura fija */}
+            <div class="flex-1 flex flex-col">
               {p.profileId ? (
                 /* Contenido si ya tiene perfil nutricional */
-                <div>
+                <div class="flex flex-col flex-1">
                   <div class="bg-white/40 rounded-xl p-3 mb-4 border border-white/60">
                     <div class="flex justify-between items-center mb-1">
                       <p class="text-[10px] uppercase tracking-widest text-slate-400 font-bold mb-1">Diagnóstico Actual</p>
@@ -98,28 +128,48 @@ const patients = profilesRes.rows;
                           p.metabolicRisk === 'Moderado' ? 'bg-amber-50 text-amber-700 border-amber-200' :
                           'bg-emerald-50 text-emerald-700 border-emerald-200'
                       }`}>
-                        Riesgo {p.metabolicRisk}
+                        Riesgo {p.metabolicRisk || 'No evaluado'}
                       </span>
                     </div>
                     <p class="font-semibold text-sm text-slate-700 truncate">{p.nutritionalDiagnosis || 'Ver detalles'}</p>
                   </div>
-                  
-                  <div class="grid grid-cols-2 gap-4 text-sm mb-5">
-                    <div>
-                      <p class="text-slate-400 text-xs font-semibold">IMC Actual</p>
-                      <p class="font-bold text-slate-800 text-lg">{p.latestBmi || '--'}</p>
+
+                  <div class="grid grid-cols-2 gap-4 text-sm mb-4">
+                    <div class="bg-slate-50/50 rounded-lg p-3">
+                      <p class="text-slate-400 text-xs font-semibold mb-1">IMC Actual</p>
+                      <p class="font-bold text-slate-800 text-xl">{p.latestBmi || '--'}</p>
                     </div>
-                    <div>
-                      <p class="text-slate-400 text-xs font-semibold">% Grasa Corporal</p>
-                      <p class="font-bold text-slate-800 text-lg">{p.bodyFatPercentage ? p.bodyFatPercentage + '%' : '--'}</p>
+                    <div class="bg-slate-50/50 rounded-lg p-3">
+                      <p class="text-slate-400 text-xs font-semibold mb-1">% Grasa Corporal</p>
+                      <p class="font-bold text-slate-800 text-xl">{p.bodyFatPercentage ? p.bodyFatPercentage + '%' : '--'}</p>
                     </div>
+                  </div>
+
+                  {/* Espaciador para empujar el footer */}
+                  <div class="flex-1"></div>
+
+                  {/* Footer */}
+                  <div class="flex items-center justify-between border-t border-slate-100 pt-4 mt-auto">
+                    <span class="text-xs text-slate-400 font-medium font-mono border bg-slate-50 px-2 py-1 rounded">
+                      {p.date ? String(p.date).split(' ')[0] : 'Hoy'}
+                    </span>
+
+                    {p.planId ? (
+                       <span class="text-sm font-semibold text-emerald-600 group-hover:text-emerald-700 transition-colors flex items-center gap-1">
+                         Ver Plan <span aria-hidden="true">&rarr;</span>
+                       </span>
+                    ) : (
+                       <span class="text-sm font-semibold text-amber-600 group-hover:text-amber-700 transition-colors flex items-center gap-1">
+                         Crear Plan <span aria-hidden="true">&rarr;</span>
+                       </span>
+                    )}
                   </div>
                 </div>
               ) : (
                 /* Estado vacío (Sin evaluación inicial) */
-                <div class="py-6 flex flex-col items-center justify-center text-center h-full border-2 border-dashed border-slate-200 rounded-xl bg-slate-50/50">
-                  <div class="w-10 h-10 rounded-full bg-teal-50 flex items-center justify-center text-teal-600 mb-2">
-                    <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14"/><path d="M12 5v14"/></svg>
+                <div class="flex flex-col items-center justify-center text-center flex-1 border-2 border-dashed border-slate-200 rounded-xl bg-slate-50/50 p-6">
+                  <div class="w-12 h-12 rounded-full bg-teal-50 flex items-center justify-center text-teal-600 mb-3">
+                    <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14"/><path d="M12 5v14"/></svg>
                   </div>
                   <p class="text-sm text-slate-600 font-semibold mb-1">Sin evaluación inicial</p>
                   <p class="text-xs text-slate-400 mb-3 px-4">Crear perfil diagnóstico ahora.</p>
@@ -129,24 +179,6 @@ const patients = profilesRes.rows;
                 </div>
               )}
             </div>
-
-            {p.profileId && (
-              <div class="flex items-center justify-between border-t border-slate-100 pt-4 mt-auto">
-                <span class="text-xs text-slate-400 font-medium font-mono border bg-slate-50 px-2 py-1 rounded">
-                  {p.date ? String(p.date).split(' ')[0] : 'Hoy'}
-                </span>
-
-                {p.planId ? (
-                   <span class="text-sm font-semibold text-emerald-600 group-hover:text-emerald-700 transition-colors flex items-center gap-1">
-                     Ver Plan <span aria-hidden="true">&rarr;</span>
-                   </span>
-                ) : (
-                   <span class="text-sm font-semibold text-amber-600 group-hover:text-amber-700 transition-colors flex items-center gap-1">
-                     Crear Plan <span aria-hidden="true">&rarr;</span>
-                   </span>
-                )}
-              </div>
-            )}
 
             {/* Botón de Notas para Nutriólogo */}
             {user?.roleId === ROLES.NUTRIOLOGO && (
