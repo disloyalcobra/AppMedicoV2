@@ -9,13 +9,29 @@ if (!checkRole(user, [ROLES.DOCTOR, ROLES.STAFF, ROLES.ADMINISTRADOR])) {
 }
 const canEdit = [ROLES.STAFF, ROLES.ADMINISTRADOR].includes(user?.roleId as number);
 
-// Fetch Medications from Turso DB
-const medsRes = await db.execute(`
+// Búsqueda
+const q = Astro.url.searchParams.get('q')?.trim() || '';
+
+let sqlQuery = `
   SELECT medicationId as id, brandName as name, activeIngredient, 
          presentation, currentStock as stock, reorderPoint as minStock
   FROM Medications
-  ORDER BY currentStock ASC
-`);
+`;
+
+let args: any[] = [];
+
+if (q) {
+  sqlQuery += ` WHERE brandName LIKE ? OR activeIngredient LIKE ? OR presentation LIKE ?`;
+  args.push(`%${q}%`, `%${q}%`, `%${q}%`);
+}
+
+sqlQuery += ` ORDER BY currentStock ASC`;
+
+// Fetch Medications from Turso DB
+const medsRes = await db.execute({
+  sql: sqlQuery,
+  args: args
+});
 
 interface Medication {
   id: number;
@@ -59,15 +75,17 @@ const medications = medsRes.rows.map((m: any): Medication => ({
 
   <div class="glass-card rounded-2xl overflow-hidden border border-white/60">
     <!-- Filters / Search -->
-    <div class="p-4 border-b border-slate-200/60 flex items-center gap-4 bg-white/30">
-      <div class="relative flex-1 max-w-md">
-        <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="absolute left-3 top-2.5 text-slate-400"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/></svg>
-        <input type="text" placeholder="Buscar medicamento o ingrediente activo..." class="w-full bg-white/50 border border-slate-200/60 rounded-xl pl-10 pr-4 py-2 text-slate-800 text-sm focus:outline-none focus:ring-2 focus:ring-teal-500" />
-      </div>
-      <label class="flex items-center gap-2 text-sm text-slate-600 font-semibold cursor-pointer">
-        <input type="checkbox" class="rounded text-teal-600 focus:ring-teal-500 border-slate-300">
-        Ver solo stock crítico
-      </label>
+    <div class="p-4 border-b border-slate-200/60 bg-white/30">
+      <form method="GET" class="flex flex-col sm:flex-row items-start sm:items-center gap-4">
+        <div class="relative flex-1 max-w-md w-full">
+          <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="absolute left-3 top-2.5 text-slate-400"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/></svg>
+          <input type="text" name="q" value={q} placeholder="Buscar medicamento o ingrediente activo..." class="w-full bg-white/50 border border-slate-200/60 rounded-xl pl-10 pr-4 py-2 text-slate-800 text-sm focus:outline-none focus:ring-2 focus:ring-teal-500" />
+        </div>
+        <div class="flex items-center gap-4">
+            <button type="submit" class="px-4 py-2 bg-gradient-to-r from-teal-500 to-emerald-500 text-white text-sm font-medium rounded-xl shadow-sm hover:shadow-md transition-all">Buscar</button>
+            {q && <a href="/medications" class="px-4 py-2 border border-slate-200 text-slate-600 text-sm font-medium rounded-xl hover:bg-slate-50 transition-colors">Limpiar</a>}
+        </div>
+      </form>
     </div>
 
     <!-- Table -->

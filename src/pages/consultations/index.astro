@@ -9,7 +9,10 @@ if (!checkRole(user, [ROLES.DOCTOR, ROLES.JEFE_MEDICO, ROLES.ADMINISTRADOR, ROLE
 }
 
 // Obtener todas las consultas con datos del paciente, doctor y conteo de recetas
-const consRes = await db.execute(`
+// Búsqueda
+const q = Astro.url.searchParams.get('q')?.trim() || '';
+
+let sqlQuery = `
   SELECT 
     c.consultationId,
     c.consultationDate,
@@ -25,8 +28,20 @@ const consRes = await db.execute(`
   JOIN Patients p ON a.patientId = p.patientId
   JOIN Users u ON p.patientId = u.userId
   JOIN Users ud ON a.doctorId = ud.userId
-  ORDER BY c.consultationDate DESC
-`);
+`;
+let args: any[] = [];
+
+if (q) {
+  sqlQuery += ` WHERE u.firstName LIKE ? OR u.lastName LIKE ? OR c.diagnosis LIKE ?`;
+  args.push(`%${q}%`, `%${q}%`, `%${q}%`);
+}
+
+sqlQuery += ` ORDER BY c.consultationDate DESC`;
+
+const consRes = await db.execute({
+  sql: sqlQuery,
+  args: args
+});
 
 const consultations = consRes.rows;
 ---
@@ -57,12 +72,17 @@ const consultations = consRes.rows;
 
   <!-- Table -->
   <div class="glass-card rounded-2xl overflow-hidden border border-white/60">
-    <div class="p-4 border-b border-slate-200/60 bg-white/30 flex items-center gap-4">
-      <div class="relative flex-1 max-w-md">
-        <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="absolute left-3 top-2.5 text-slate-400"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/></svg>
-        <input type="text" id="searchInput" placeholder="Buscar por paciente o diagnóstico..."
-          class="w-full bg-white/50 border border-slate-200/60 rounded-xl pl-10 pr-4 py-2 text-slate-800 text-sm focus:outline-none focus:ring-2 focus:ring-teal-500"/>
-      </div>
+    <div class="p-4 border-b border-slate-200/60 bg-white/30">
+      <form method="GET" class="flex flex-col sm:flex-row items-start sm:items-center gap-4">
+        <div class="relative flex-1 max-w-md w-full">
+          <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="absolute left-3 top-2.5 text-slate-400"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/></svg>
+          <input type="text" name="q" value={q} placeholder="Buscar por paciente o diagnóstico..." class="w-full bg-white/50 border border-slate-200/60 rounded-xl pl-10 pr-4 py-2 text-slate-800 text-sm focus:outline-none focus:ring-2 focus:ring-teal-500" />
+        </div>
+        <div class="flex items-center gap-4">
+            <button type="submit" class="px-4 py-2 bg-gradient-to-r from-teal-500 to-emerald-500 text-white text-sm font-medium rounded-xl shadow-sm hover:shadow-md transition-all">Buscar</button>
+            {q && <a href="/consultations" class="px-4 py-2 border border-slate-200 text-slate-600 text-sm font-medium rounded-xl hover:bg-slate-50 transition-colors">Limpiar</a>}
+        </div>
+      </form>
     </div>
 
     <div class="overflow-x-auto">
@@ -123,17 +143,3 @@ const consultations = consRes.rows;
     </div>
   </div>
 </Layout>
-
-<script>
-  const searchInput = document.getElementById('searchInput') as HTMLInputElement;
-  if (searchInput) {
-    searchInput.addEventListener('input', () => {
-      const query = searchInput.value.toLowerCase();
-      document.querySelectorAll('.consultation-row').forEach(row => {
-        const patient = row.querySelector('.patient-name')?.textContent?.toLowerCase() || '';
-        const diagnosis = row.querySelector('.diagnosis-text')?.textContent?.toLowerCase() || '';
-        (row as HTMLElement).style.display = (patient.includes(query) || diagnosis.includes(query)) ? '' : 'none';
-      });
-    });
-  }
-</script>
