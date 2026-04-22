@@ -33,7 +33,7 @@ const profileRes = await db.execute({
 const profileId = profileRes.rows.length > 0 ? profileRes.rows[0].profileId : null;
 
 // Seguridad básica para que un estudiante solo vea su propio plan (si aplica el flow real)
-if (user?.roleId === ROLES.ESTUDIANTE && user?.userId !== plan.patientId) {
+if (user?.roleId === ROLES.ESTUDIANTE && Number(user?.userId) !== Number(plan.patientId)) {
     return Astro.redirect('/403');
 }
 

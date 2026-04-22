@@ -73,19 +73,27 @@ export const onRequest = defineMiddleware(async (context, next) => {
 
   // Módulo de Lesiones
   if (path.startsWith('/injuries')) {
-    // Personal médico, entrenadores (vía Coach_Athlete) y estudiantes (propias)
+    // Personal médico, entrenadores (vía User_Patient) y estudiantes (propias)
     if (![ROLES.DOCTOR, ROLES.JEFE_MEDICO, ROLES.ENTRENADOR, ROLES.ESTUDIANTE].includes(roleId)) return redirect('/?error=403');
   }
 
   // Módulo de Nutrición especializado
   if (path.startsWith('/nutrition')) {
-    // Nutriólogos, personal médico de apoyo y entrenadores (solo lectura)
-    if (![ROLES.NUTRIOLOGO, ROLES.DOCTOR, ROLES.JEFE_MEDICO, ROLES.ENTRENADOR].includes(roleId)) return redirect('/?error=403');
+    // Nutriólogos, personal médico de apoyo, entrenadores (solo lectura) y estudiantes (para ver su propio plan)
+    if (![ROLES.NUTRIOLOGO, ROLES.DOCTOR, ROLES.JEFE_MEDICO, ROLES.ENTRENADOR, ROLES.ESTUDIANTE].includes(roleId)) return redirect('/?error=403');
   }
 
   // Notas Colaborativas y Alertas
   if (path.startsWith('/notes')) {
     if (![ROLES.DOCTOR, ROLES.NUTRIOLOGO, ROLES.ENTRENADOR, ROLES.JEFE_MEDICO].includes(roleId)) {
+      return redirect('/?error=403');
+    }
+  }
+
+  // Reportes y Estadísticas
+  if (path.startsWith('/reports')) {
+    // Administrador (vía regla global), Jefe Médico y Doctores
+    if (![ROLES.JEFE_MEDICO, ROLES.DOCTOR].includes(roleId)) {
       return redirect('/?error=403');
     }
   }
