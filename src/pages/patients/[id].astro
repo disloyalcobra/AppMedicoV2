@@ -118,27 +118,50 @@ const notesResult = await db.execute({
 });
 const allNotes = notesResult.rows;
 
-// G. Verificación de Vínculo Doctor-Paciente (Seguridad de visibilidad)
+// G. Verificación de Vínculo (Seguridad de visibilidad)
 let isLinkedDoctor = false;
+let isLinkedCoach = false;
 if (user?.roleId === ROLES.DOCTOR) {
   const linkRes = await db.execute({
-    sql: `SELECT 1 FROM Appointments WHERE doctorId = ? AND patientId = ? LIMIT 1`,
+    sql: `SELECT 1 FROM User_Patient WHERE userId = ? AND patientId = ? AND roleType = 'Doctor' LIMIT 1`,
     args: [user.userId, id]
   });
   isLinkedDoctor = linkRes.rows.length > 0;
+} else if (user?.roleId === ROLES.ENTRENADOR) {
+  const linkRes = await db.execute({
+    sql: `SELECT 1 FROM User_Patient WHERE userId = ? AND patientId = ? AND roleType = 'Coach' LIMIT 1`,
+    args: [user.userId, id]
+  });
+  isLinkedCoach = linkRes.rows.length > 0;
 }
 
-const canSeeNotes = 
-  user?.roleId === ROLES.ADMINISTRADOR || 
-  user?.roleId === ROLES.JEFE_MEDICO || 
-  isLinkedDoctor;
-
 // --- CONFIGURACIÓN DE PERMISOS DE INTERFAZ ---
-
 const isDoctorOrAdmin =
   user?.roleId === ROLES.DOCTOR ||
   user?.roleId === ROLES.ADMINISTRADOR ||
   user?.roleId === ROLES.JEFE_MEDICO;
+
+const isNutritionist = user?.roleId === ROLES.NUTRIOLOGO;
+
+const canSeeNotes =
+  user?.roleId === ROLES.ADMINISTRADOR ||
+  user?.roleId === ROLES.JEFE_MEDICO ||
+  isLinkedDoctor ||
+  isLinkedCoach ||
+  isNutritionist;
+
+let activePlanId: number | null = null;
+if (user?.roleId === ROLES.ESTUDIANTE) {
+  const planRes = await db.execute({
+    sql: `SELECT planId FROM NutritionalPlans WHERE patientId = ? ORDER BY creationDate DESC LIMIT 1`,
+    args: [id]
+  });
+  if (planRes.rows.length > 0) {
+    activePlanId = Number(planRes.rows[0].planId);
+  }
+}
+
+// isNutritionist e isDoctorOrAdmin ya se declararon arriba junto a canSeeNotes
 
 const canAddNotes =
   user?.roleId === ROLES.DOCTOR ||
@@ -250,6 +273,20 @@ const ICONS = {
         )
       }
       {
+        /* Nutriólogo puede crear evaluación nutricional desde el perfil del paciente */
+      }
+      {
+        isNutritionist && (
+          <a
+            href={`/nutrition/profiles/add?patientId=${patient.id}`}
+            class="px-4 py-2 bg-emerald-50 border border-emerald-200 text-emerald-700 font-semibold rounded-xl text-sm hover:bg-emerald-100 transition-colors flex items-center gap-1.5"
+          >
+            <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14"/><path d="M12 5v14"/></svg>
+            Nueva Evaluación Nutricional
+          </a>
+        )
+      }
+      {
         canAddNotes && (
           <button
             id="openNoteModal"
@@ -354,7 +391,8 @@ const ICONS = {
   </div>
 
   <div class="grid grid-cols-1 xl:grid-cols-2 gap-8">
-    {/* SECCIÓN CITAS: Gestión de tiempos y especialistas */}
+    {/* SECCIÓN CITAS: Oculta para nutriólogo, visible para otros roles */}
+    {!isNutritionist && (
     <div class="glass-card rounded-2xl p-6">
       <div
         class="flex items-center justify-between mb-4 border-b border-white/40 pb-4"
@@ -432,8 +470,10 @@ const ICONS = {
         }
       </div>
     </div>
+    )}
 
-    {/* SECCIÓN CONSULTAS: Diagnósticos médicos detallados */}
+    {/* SECCIÓN CONSULTAS: Oculta para nutriólogo */}
+    {!isNutritionist && (
     <div class="glass-card rounded-2xl p-6">
       <div
         class="flex items-center justify-between mb-4 border-b border-white/40 pb-4"
@@ -526,6 +566,7 @@ const ICONS = {
         }
       </div>
     </div>
+    )}
 
 
     {/* SECCIÓN NOTAS MÉDICAS: Seguimiento colaborativo entre doctores */}
@@ -613,7 +654,7 @@ const ICONS = {
       )
     }
 
-    {/* SECCIÓN LESIONES: Incidentes físicos y recuperación */}
+    {/* SECCIÓN LESIONES: Visible para nutriólogo en modo solo lectura */}
     <div class="glass-card rounded-2xl p-6">
       <div
         class="flex items-center justify-between mb-4 border-b border-white/40 pb-4"
@@ -707,6 +748,60 @@ const ICONS = {
         }
       </div>
     </div>
+
+    {/* SECCIÓN NUTRICIÓN (Nutriólogo / Doctor) - Enlace rápido a perfil nutricional */}
+    {isNutritionist && (
+    <div class="glass-card rounded-2xl p-6 bg-gradient-to-br from-emerald-50/50 to-teal-50/50 border border-emerald-100">
+      <div class="flex items-center justify-between mb-4 border-b border-emerald-100 pb-4"
+      >
+        <h3 class="text-xl font-bold text-slate-800">Nutrición</h3>
+        <a
+          href={`/nutrition/profiles/add?patientId=${patient.id}`}
+          class="flex items-center gap-1 text-sm bg-emerald-500 text-white px-3 py-1.5 rounded-lg font-semibold hover:bg-emerald-600 transition-colors"
+        >
+          <svg
+            class="w-4 h-4"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            stroke-width="2"
+            stroke-linecap="round"
+            stroke-linejoin="round"
+            set:html={ICONS.plus}
+          />
+          Crear Evaluación
+        </a>
+      </div>
+      <p class="text-slate-600 text-sm mb-4">
+        Ve al panel de nutrición para crear el historial dietético y recetar
+        el plan de alimentación para {patient.firstName}.
+      </p>
+      <a
+        href={`/nutrition/profiles`}
+        class="w-full flex justify-center py-2.5 text-emerald-700 bg-emerald-100/50 border border-emerald-200 rounded-xl font-bold text-sm hover:bg-emerald-200 transition-colors"
+      >
+        Ir a Perfiles Nutricionales &rarr;
+      </a>
+    </div>
+    )}
+
+    {/* SECCIÓN NUTRICIÓN (Estudiante) - Enlace rápido a su Plan Nutricional Activo */}
+    {isStudent && activePlanId && (
+    <div class="glass-card rounded-2xl p-6 bg-gradient-to-br from-amber-50/50 to-orange-50/50 border border-amber-100">
+      <div class="flex items-center justify-between mb-4 border-b border-amber-100 pb-4">
+        <h3 class="text-xl font-bold text-slate-800">Tu Nutrición</h3>
+      </div>
+      <p class="text-slate-600 text-sm mb-4">
+        Tienes un plan alimenticio activo configurado por tu nutriólogo. Revísalo aquí.
+      </p>
+      <a
+        href={`/nutrition/plans/${activePlanId}`}
+        class="w-full flex justify-center py-2.5 text-amber-800 bg-amber-100/50 border border-amber-200 rounded-xl font-bold text-sm hover:bg-amber-200 transition-colors"
+      >
+        Ver mi Plan Nutricional &rarr;
+      </a>
+    </div>
+    )}
   </div>
 
   {/* MODAL DE NOTAS Y ALERTAS */}

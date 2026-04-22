@@ -1,0 +1,142 @@
+---
+import Layout from '../../layouts/Layout.astro';
+import { ROLES, checkRole } from '../../functions/checkRole';
+import { db } from '../../turso';
+
+const user = Astro.locals.user;
+if (!checkRole(user, [ROLES.DOCTOR, ROLES.JEFE_MEDICO, ROLES.NUTRIOLOGO, ROLES.ENTRENADOR, ROLES.ADMINISTRADOR])) {
+  return Astro.redirect('/403');
+}
+
+const roleMap: Record<number, string> = {
+  [ROLES.DOCTOR]: 'Doctor',
+  [ROLES.NUTRIOLOGO]: 'Nutritionist',
+  [ROLES.ENTRENADOR]: 'Coach'
+};
+const roleType = user?.roleId ? roleMap[user.roleId] : undefined;
+
+let searchTerm = Astro.url.searchParams.get('q') || '';
+let patients: any[] = [];
+let queryArgs: any[] = [];
+
+let baseSql = `
+  SELECT 
+    p.patientId as id, 
+    u.firstName, 
+    u.lastName, 
+    p.dateOfBirth, 
+    p.isAthlete,
+    u.matricula
+  FROM Patients p
+  JOIN Users u ON p.patientId = u.userId
+`;
+
+if (searchTerm) {
+  baseSql += ` WHERE u.firstName LIKE ? OR u.lastName LIKE ? OR u.matricula LIKE ?`;
+  queryArgs.push(`%${searchTerm}%`, `%${searchTerm}%`, `%${searchTerm}%`);
+}
+
+baseSql += ` ORDER BY u.firstName ASC LIMIT 50`;
+
+const result = await db.execute({ sql: baseSql, args: queryArgs });
+
+// Obtenemos los pacientes que ya están vinculados al usuario logueado
+let linkedPatientIds = new Set<number>();
+if (roleType) {
+  const linkedRes = await db.execute({
+    sql: `SELECT patientId FROM User_Patient WHERE userId = ? AND roleType = ?`,
+    args: [Number(user?.userId), roleType]
+  });
+  linkedRes.rows.forEach(r => linkedPatientIds.add(Number(r.patientId)));
+}
+
+patients = result.rows.map((row: any) => ({
+  id: Number(row.id),
+  firstName: String(row.firstName),
+  lastName: String(row.lastName),
+  dateOfBirth: String(row.dateOfBirth),
+  isAthlete: Number(row.isAthlete),
+  matricula: row.matricula ? String(row.matricula) : 'N/A',
+  isLinked: linkedPatientIds.has(Number(row.id))
+}));
+
+// Manejo del POST para vincular un paciente
+if (Astro.request.method === 'POST') {
+  const data = await Astro.request.formData();
+  const patientId = data.get('patientId');
+  if (patientId && roleType) {
+    await db.execute({
+      sql: `INSERT OR IGNORE INTO User_Patient (userId, patientId, roleType) VALUES (?, ?, ?)`,
+      args: [Number(user?.userId), String(patientId), roleType]
+    });
+    return Astro.redirect('/patients');
+  }
+}
+---
+
+<Layout title="Búsqueda Global de Pacientes">
+  <div class="mb-8 flex justify-between items-end">
+    <div>
+      <a href="/patients" class="text-teal-600 hover:text-teal-700 text-sm font-semibold flex items-center gap-1 mb-2">
+        <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m15 18-6-6 6-6"/></svg>
+        Volver a Mis Pacientes
+      </a>
+      <h1 class="text-3xl font-bold text-slate-800 tracking-tight">Base Global de Pacientes</h1>
+      <p class="text-slate-500 mt-1">Busca cualquier expediente médico registrado en el sistema.</p>
+    </div>
+  </div>
+
+  <form method="GET" class="glass-card rounded-2xl p-4 mb-6 flex items-center gap-4">
+    <div class="relative flex-1">
+      <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="absolute left-3 top-3 text-slate-400"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/></svg>
+      <input type="text" name="q" value={searchTerm} placeholder="Buscar paciente por nombre, apellidos o matrícula..." class="w-full bg-white/50 border border-slate-200/60 rounded-xl pl-10 pr-4 py-2 text-slate-800 focus:outline-none focus:ring-2 focus:ring-teal-500" />
+    </div>
+    <button type="submit" class="bg-gradient-to-r from-teal-500 to-emerald-500 text-white font-medium py-2 px-6 rounded-xl shadow-md hover:shadow-lg transition-all">
+      Buscar
+    </button>
+  </form>
+
+  <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+    {patients.length === 0 ? (
+      <div class="col-span-1 md:col-span-2 lg:col-span-3 text-center py-10 text-slate-500">
+        {searchTerm ? "No se encontraron pacientes con esa búsqueda." : "Escribe algo en el buscador para encontrar pacientes."}
+        <div class="mt-4">
+           <a href="/patients/add" class="inline-flex bg-white border border-slate-200 text-slate-700 font-medium py-2 px-4 rounded-xl shadow-sm hover:bg-slate-50 transition-all items-center gap-2">
+             <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+             Crear Nuevo Paciente
+           </a>
+        </div>
+      </div>
+    ) : (
+      patients.map(p => (
+        <div class="glass-card rounded-2xl p-6 relative overflow-hidden border border-white/80 flex flex-col">
+          <div class="flex items-center gap-4 mb-4">
+            <div class={`w-12 h-12 rounded-full flex items-center justify-center text-lg shadow-sm border font-bold shrink-0 ${p.isAthlete === 1 ? 'bg-amber-50 text-amber-700 border-amber-200' : 'bg-teal-50 text-teal-700 border-teal-200'}`}>
+              {p.firstName[0]}{p.lastName[0]}
+            </div>
+            <div class="min-w-0 pr-2">
+              <h3 class="text-lg font-bold text-slate-800 truncate">{p.firstName} {p.lastName}</h3>
+              <p class="text-xs text-slate-500 font-medium">Exp. #{String(p.id).padStart(4, '0')} • Mat: {p.matricula}</p>
+            </div>
+          </div>
+          
+          <div class="mt-auto pt-4 border-t border-slate-100 w-full">
+            {p.isLinked || [ROLES.ADMINISTRADOR, ROLES.JEFE_MEDICO].includes(Number(user?.roleId)) ? (
+              <a href={`/patients/${p.id}`} class="w-full flex justify-center py-2 text-sm font-semibold text-teal-600 bg-teal-50 border border-teal-200 rounded-xl hover:bg-teal-100 transition-colors">
+                Ver Expediente
+              </a>
+            ) : (
+              <form method="POST">
+                <input type="hidden" name="patientId" value={p.id} />
+                <button type="submit" class="w-full flex justify-center py-2 text-sm font-semibold text-white bg-slate-800 rounded-xl shadow-sm hover:bg-slate-700 transition-colors gap-2 items-center">
+                  <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><line x1="19" y1="8" x2="19" y2="14"/><line x1="22" y1="11" x2="16" y2="11"/></svg>
+                  Vincular a mi lista
+                </button>
+              </form>
+            )}
+          </div>
+        </div>
+      ))
+    )}
+  </div>
+</Layout>
