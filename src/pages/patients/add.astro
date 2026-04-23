@@ -45,7 +45,7 @@ if (Astro.request.method === 'POST') {
     const coachId = data.get('coachId') ? Number(data.get('coachId')) : null;
 
     // Transaction to ensure both User and Patient are created
-    const batchResult = await db.batch([
+    await db.batch([
       {
         sql: `INSERT INTO Users (firstName, lastName, matricula, roleId) VALUES (?, ?, ?, ?)`,
         args: [firstName, lastName, matricula || null, ROLES.ESTUDIANTE]

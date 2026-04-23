@@ -31,6 +31,22 @@ if (user?.roleId === ROLES.ESTUDIANTE && Number(user.userId) !== Number(injury.p
     return Astro.redirect('/403');
 }
 
+// Security: Doctors/Nutritionists/Coaches can only view their assigned patients
+let requiredRoleType = "";
+if (user?.roleId === ROLES.DOCTOR) requiredRoleType = "Doctor";
+else if (user?.roleId === ROLES.NUTRIOLOGO) requiredRoleType = "Nutritionist";
+else if (user?.roleId === ROLES.ENTRENADOR) requiredRoleType = "Coach";
+
+if (requiredRoleType && user) {
+  const accessCheck = await db.execute({
+    sql: `SELECT 1 FROM User_Patient WHERE userId = ? AND patientId = ? AND roleType = ?`,
+    args: [user.userId, injury.patientId, requiredRoleType]
+  });
+  if (accessCheck.rows.length === 0) {
+    return Astro.redirect("/403");
+  }
+}
+
 if (Astro.request.method === 'POST' && (isDoctorOrAdmin || user?.roleId === ROLES.ENTRENADOR)) {
     const data = await Astro.request.formData();
     const newStatus = data.get('status') as string;

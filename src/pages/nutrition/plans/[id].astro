@@ -37,6 +37,22 @@ if (user?.roleId === ROLES.ESTUDIANTE && Number(user?.userId) !== Number(plan.pa
     return Astro.redirect('/403');
 }
 
+// Security: Doctors/Nutritionists/Coaches can only view their assigned patients
+let requiredRoleType = "";
+if (user?.roleId === ROLES.DOCTOR) requiredRoleType = "Doctor";
+else if (user?.roleId === ROLES.NUTRIOLOGO) requiredRoleType = "Nutritionist";
+else if (user?.roleId === ROLES.ENTRENADOR) requiredRoleType = "Coach";
+
+if (requiredRoleType && user) {
+  const accessCheck = await db.execute({
+    sql: `SELECT 1 FROM User_Patient WHERE userId = ? AND patientId = ? AND roleType = ?`,
+    args: [user.userId, plan.patientId, requiredRoleType]
+  });
+  if (accessCheck.rows.length === 0) {
+    return Astro.redirect("/403");
+  }
+}
+
 // Historial de seguimientos asociados a este plan
 const followupsRes = await db.execute({
     sql: `SELECT *
@@ -47,14 +63,7 @@ const followupsRes = await db.execute({
 const followups = followupsRes.rows;
 
 // Intentar parsear el menú semanal a formato JSON para renderizarlo bonito
-let parsedMenu: any = null;
-if (plan.weeklyMenu) {
-    try {
-        parsedMenu = JSON.parse(plan.weeklyMenu as string);
-    } catch (e) {
-        parsedMenu = null;
-    }
-}
+// (parsedMenu se usaba para debugging, el menú se renderiza como texto plano directamente)
 
 
 ---

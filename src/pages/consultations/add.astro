@@ -27,9 +27,10 @@ if (!finalAptId) {
   finalAptId = apts.rows[0]?.appointmentId as any;
 }
 
-// Si no se encuentra una cita para este paciente, redirigimos con error
+// Si no se encuentra una cita para este paciente, es una consulta directa
+let isDirectConsultation = false;
 if (!finalAptId) {
-  return Astro.redirect(`/patients/${patientId}?error=no_appointment_found`);
+  isDirectConsultation = true;
 }
 
 // Obtener el ID del paciente si solo tenemos la cita
@@ -47,21 +48,38 @@ if (Astro.request.method === 'POST') {
   const symptoms = data.get('symptoms') as string;
   const diagnosis = data.get('diagnosis') as string;
   const date = new Date().toISOString().split('T')[0];
+  
+  let aptIdForCons = finalAptId;
+
+  if (isDirectConsultation) {
+    const currentDateTime = new Date().toISOString().replace('T', ' ').substring(0, 19);
+    const aptRes = await db.execute({
+      sql: `INSERT INTO Appointments (patientId, doctorId, dateTime, status, reason) VALUES (?, ?, ?, 'Completada', 'Consulta directa sin cita previa')`,
+      args: [finalPatientId, user?.userId || 0, currentDateTime]
+    });
+    aptIdForCons = String(aptRes.lastInsertRowid);
+  } else {
+    // Marcar cita existente como completada automáticamente
+    await db.execute({
+      sql: `UPDATE Appointments SET status = 'Completada' WHERE appointmentId = ?`,
+      args: [aptIdForCons]
+    });
+  }
 
   const result = await db.execute({
     sql: `INSERT INTO Consultations (appointmentId, diagnosis, symptoms, consultationDate) VALUES (?, ?, ?, ?)`,
-    args: [finalAptId, diagnosis, symptoms, date]
+    args: [aptIdForCons, diagnosis, symptoms, date]
   });
 
-  const newId = result.lastInsertRowid;
+  // Auto-vinculación Doctor -> Paciente
+  if (user?.userId && finalPatientId) {
+    await db.execute({
+      sql: `INSERT OR IGNORE INTO User_Patient (userId, patientId, roleType) VALUES (?, ?, 'Doctor')`,
+      args: [user.userId, finalPatientId]
+    });
+  }
 
-  // Marcar cita como completada automáticamente
-  await db.execute({
-    sql: `UPDATE Appointments SET status = 'Completada' WHERE appointmentId = ?`,
-    args: [finalAptId]
-  });
-
-  return Astro.redirect(`/consultations/${newId}`);
+  return Astro.redirect('/consultations/' + String(result.lastInsertRowid));
 }
 
 const patientDataRes = await db.execute({
@@ -82,7 +100,9 @@ const age = pt?.dateOfBirth ? Math.abs(new Date(Date.now() - new Date(pt.dateOfB
     </div>
     <div class="flex items-center gap-4">
       <h1 class="text-3xl font-bold text-slate-800 tracking-tight">Registro de Consulta</h1>
-      <span class="bg-teal-100 text-teal-800 text-xs font-bold px-3 py-1 rounded-full border border-teal-200 uppercase">Cita #{String(finalAptId).padStart(4, '0')}</span>
+      <span class="bg-teal-100 text-teal-800 text-xs font-bold px-3 py-1 rounded-full border border-teal-200 uppercase">
+        {isDirectConsultation ? 'Consulta Directa' : `Cita #${String(finalAptId).padStart(4, '0')}`}
+      </span>
     </div>
   </div>
 

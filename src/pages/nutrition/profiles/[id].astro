@@ -39,6 +39,22 @@ const age = Math.abs(
     ).getUTCFullYear() - 1970,
 );
 
+// Security: Doctors/Nutritionists/Coaches can only view their assigned patients
+let requiredRoleType = "";
+if (user?.roleId === ROLES.DOCTOR) requiredRoleType = "Doctor";
+else if (user?.roleId === ROLES.NUTRIOLOGO) requiredRoleType = "Nutritionist";
+else if (user?.roleId === ROLES.ENTRENADOR) requiredRoleType = "Coach";
+
+if (requiredRoleType && user) {
+  const accessCheck = await db.execute({
+    sql: `SELECT 1 FROM User_Patient WHERE userId = ? AND patientId = ? AND roleType = ?`,
+    args: [user.userId, profile.patientId, requiredRoleType]
+  });
+  if (accessCheck.rows.length === 0) {
+    return Astro.redirect("/403");
+  }
+}
+
 // Fetch active plan if any
 const planRes = await db.execute({
     sql: `SELECT planId, patientAccepted FROM NutritionalPlans WHERE patientId = ? ORDER BY creationDate DESC LIMIT 1`,

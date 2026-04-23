@@ -92,7 +92,7 @@ ${data.get('cena') || 'No especificado'}`;
     });
     return Astro.redirect(`/nutrition/plans/${formEditPlanId}`);
   } else {
-    await db.execute({
+    const insertedPlan = await db.execute({
       sql: `INSERT INTO NutritionalPlans (
               patientId, nutritionistId, caloricRequirement, macrosDistribution,
               weeklyMenu, equivalencesList, generalRecommendations, patientAccepted
@@ -103,17 +103,18 @@ ${data.get('cena') || 'No especificado'}`;
         data.get('caloricRequirement') as string,
         macrosDistribution,
         weeklyMenu,
-        '',
+        'N/A', // Equivalences JSON no longer used as primary
         data.get('generalRecommendations') as string
       ]
     });
 
-    const newPlanRes = await db.execute({
-        sql: `SELECT planId FROM NutritionalPlans WHERE patientId = ? ORDER BY creationDate DESC LIMIT 1`,
-        args: [finalPatientId]
+    // Auto-vinculación Nutriólogo -> Paciente
+    await db.execute({
+      sql: `INSERT OR IGNORE INTO User_Patient (userId, patientId, roleType) VALUES (?, ?, 'Nutritionist')`,
+      args: [nutritionistId, finalPatientId]
     });
 
-    return Astro.redirect(`/nutrition/plans/${newPlanRes.rows[0].planId}`);
+    return Astro.redirect('/nutrition/plans/' + String(insertedPlan.lastInsertRowid));
   }
 }
 

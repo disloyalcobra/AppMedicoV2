@@ -42,12 +42,41 @@ const timeStr = dateObj.toLocaleTimeString('es-MX', { hour: '2-digit', minute:'2
 // Handle Form Submit for changing status
 if (Astro.request.method === 'POST') {
     const data = await Astro.request.formData();
-    const newStatus = data.get('status') as string;
+    const action = data.get('action') as string;
     
-    if (newStatus) {
+    if (action === 'confirm') {
         await db.execute({
-            sql: `UPDATE Appointments SET status = ? WHERE appointmentId = ?`,
-            args: [newStatus, id]
+            sql: `UPDATE Appointments SET status = 'Confirmada', proposedDateTime = NULL WHERE appointmentId = ?`,
+            args: [id]
+        });
+    } else if (action === 'accept_proposed') {
+        await db.execute({
+            sql: `UPDATE Appointments SET status = 'Confirmada', dateTime = proposedDateTime, proposedDateTime = NULL WHERE appointmentId = ?`,
+            args: [id]
+        });
+    } else if (action === 'reject') {
+        await db.execute({
+            sql: `UPDATE Appointments SET status = 'Rechazada' WHERE appointmentId = ?`,
+            args: [id]
+        });
+    } else if (action === 'reschedule') {
+        const newDate = data.get('rescheduleDate');
+        const newTime = data.get('rescheduleTime');
+        const proposedDateTime = `${newDate} ${newTime}:00`;
+        
+        await db.execute({
+            sql: `UPDATE Appointments SET status = 'Reagendada', proposedDateTime = ? WHERE appointmentId = ?`,
+            args: [proposedDateTime, id]
+        });
+    } else if (action === 'complete') {
+        await db.execute({
+            sql: `UPDATE Appointments SET status = 'Completada' WHERE appointmentId = ?`,
+            args: [id]
+        });
+    } else if (action === 'cancel') {
+        await db.execute({
+            sql: `UPDATE Appointments SET status = 'Cancelada' WHERE appointmentId = ?`,
+            args: [id]
         });
     }
     
@@ -57,8 +86,11 @@ if (Astro.request.method === 'POST') {
 const statusStyles: any = {
   'En Progreso': 'bg-sky-100 text-sky-700 border-sky-200',
   'Pendiente': 'bg-amber-100 text-amber-700 border-amber-200',
-  'Completada': 'bg-emerald-100 text-emerald-700 border-emerald-200',
-  'Cancelada': 'bg-rose-100 text-rose-700 border-rose-200'
+  'Confirmada': 'bg-emerald-100 text-emerald-700 border-emerald-200',
+  'Completada': 'bg-teal-100 text-teal-700 border-teal-200',
+  'Cancelada': 'bg-rose-100 text-rose-700 border-rose-200',
+  'Reagendada': 'bg-indigo-100 text-indigo-700 border-indigo-200',
+  'Rechazada': 'bg-slate-100 text-slate-700 border-slate-200'
 };
 ---
 <Layout title={`Detalles de Cita #${app.appointmentId}`}>
@@ -103,7 +135,7 @@ const statusStyles: any = {
                   <div>
                       <span class="text-xs text-slate-400 font-bold uppercase tracking-widest block mb-2">Motivo de la Cita / Comentarios</span>
                       <div class="bg-white/60 p-4 rounded-xl border border-slate-100 text-slate-600 italic">
-                          {app.reason || 'Sin motivo especificado.'}
+                          {'Sin motivo especificado.'}
                       </div>
                   </div>
               </div>
@@ -128,26 +160,71 @@ const statusStyles: any = {
       </div>
 
       <div class="lg:col-span-1 space-y-6">
-          <div class="glass-strong rounded-2xl p-6 border border-slate-200/60 sticky top-24">
-              <h3 class="font-bold text-slate-800 border-b border-slate-200 pb-3 mb-6">Gestión de Cita</h3>
+          <div class="glass-card rounded-2xl p-6 border border-slate-200/60 sticky top-24">
+              <h3 class="font-bold text-slate-800 border-b border-slate-100 pb-3 mb-6 text-sm uppercase tracking-widest">Acciones de Gestión</h3>
               
-              <form method="POST" class="space-y-4 mb-6">
-                  <div>
-                      <label class="block text-sm font-semibold text-slate-700 mb-1.5 ml-1">Cambiar Estado</label>
-                      <select name="status" class="w-full bg-white border border-slate-200/60 rounded-xl px-4 py-2.5 text-slate-800 focus:outline-none focus:ring-2 focus:ring-teal-500 shadow-sm">
-                          <option value="Pendiente" selected={app.status === 'Pendiente'}>Pendiente</option>
-                          <option value="En Progreso" selected={app.status === 'En Progreso'}>En Progreso (En Sala)</option>
-                          <option value="Completada" selected={app.status === 'Completada'}>Completada</option>
-                          <option value="Cancelada" selected={app.status === 'Cancelada'}>Cancelada</option>
-                      </select>
-                  </div>
-                  <button type="submit" class="w-full px-4 py-2.5 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold rounded-xl transition-colors text-sm">
-                      Actualizar Estado
-                  </button>
-              </form>
+              <div class="space-y-3">
+                  {/* ACTIONS FOR DOCTOR */}
+                  {(user?.roleId === ROLES.DOCTOR || user?.roleId === ROLES.JEFE_MEDICO || user?.roleId === ROLES.ADMINISTRADOR) && (
+                      <>
+                          {app.status === 'Pendiente' && (
+                              <form method="POST">
+                                  <input type="hidden" name="action" value="confirm" />
+                                  <button type="submit" class="w-full py-3 bg-emerald-500 text-white font-bold rounded-xl shadow-md hover:bg-emerald-600 transition-all flex items-center justify-center gap-2">
+                                      <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg>
+                                      Confirmar Cita
+                                  </button>
+                              </form>
+                          )}
+                          
+                          {(app.status === 'Pendiente' || app.status === 'Confirmada') && (
+                              <button id="openRescheduleBtn" class="w-full py-3 bg-white border border-slate-200 text-slate-700 font-bold rounded-xl hover:bg-slate-50 transition-all flex items-center justify-center gap-2">
+                                  <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12a9 9 0 0 0-9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/><path d="M3 3v5h5"/><path d="M3 12a9 9 0 0 0 9 9 9.75 9.75 0 0 0 6.74-2.74L21 16"/><path d="M16 16h5v5"/></svg>
+                                  Proponer Reagendado
+                              </button>
+                          )}
 
-              {app.status === 'En Progreso' && user?.roleId === ROLES.DOCTOR && (
-                  <div class="pt-6 border-t border-slate-200">
+                          {app.status === 'Confirmada' && (
+                              <form method="POST">
+                                  <input type="hidden" name="action" value="complete" />
+                                  <button type="submit" class="w-full py-3 bg-teal-600 text-white font-bold rounded-xl shadow-md hover:bg-teal-700 transition-all flex items-center justify-center gap-2">
+                                      Marcar como Completada
+                                  </button>
+                              </form>
+                          )}
+                      </>
+                  )}
+
+                  {/* ACTIONS FOR PATIENT (Student) */}
+                  {user?.roleId === ROLES.ESTUDIANTE && app.status === 'Reagendada' && (
+                      <div class="p-4 bg-indigo-50 rounded-2xl border border-indigo-100 mb-4 animate-pulse-subtle">
+                        <p class="text-xs text-indigo-700 font-bold mb-3 uppercase tracking-wider">El doctor ha propuesto un cambio:</p>
+                        <p class="text-sm font-bold text-slate-800 mb-4">Nueva fecha: {new Date(app.proposedDateTime as string).toLocaleString('es-MX')}</p>
+                        <div class="grid grid-cols-2 gap-2">
+                            <form method="POST">
+                                <input type="hidden" name="action" value="accept_proposed" />
+                                <button type="submit" class="w-full py-2 bg-indigo-600 text-white text-xs font-bold rounded-lg shadow-sm">Aceptar</button>
+                            </form>
+                            <form method="POST">
+                                <input type="hidden" name="action" value="reject" />
+                                <button type="submit" class="w-full py-2 bg-white border border-rose-200 text-rose-600 text-xs font-bold rounded-lg shadow-sm">Rechazar</button>
+                            </form>
+                        </div>
+                      </div>
+                  )}
+
+                  {(app.status === 'Pendiente' || app.status === 'Confirmada' || app.status === 'Reagendada') && (
+                      <form method="POST" onsubmit="return confirm('¿Estás seguro de que deseas cancelar esta cita?')">
+                          <input type="hidden" name="action" value="cancel" />
+                          <button type="submit" class="w-full py-3 text-rose-600 text-sm font-bold hover:bg-rose-50 rounded-xl transition-colors">
+                              Cancelar Cita
+                          </button>
+                      </form>
+                  )}
+              </div>
+
+              {app.status === 'Confirmada' && user?.roleId === ROLES.DOCTOR && (
+                  <div class="pt-6 border-t border-slate-200 mt-4">
                       <a href={`/consultations/add?appointmentId=${app.appointmentId}`} class="w-full px-4 py-3 bg-gradient-to-r from-teal-500 to-emerald-500 text-white font-bold rounded-xl transition-all shadow-md hover:shadow-lg flex justify-center items-center gap-2">
                         <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 12h-4l-3 9L9 3l-3 9H2"/></svg>
                         Comenzar Consulta
@@ -157,4 +234,82 @@ const statusStyles: any = {
           </div>
       </div>
   </div>
+
+  {/* Reschedule Modal */}
+  <div id="rescheduleModal" class="fixed inset-0 z-[70] hidden">
+    <div class="absolute inset-0 bg-slate-900/60 backdrop-blur-sm"></div>
+    <div class="absolute inset-0 flex items-center justify-center p-4">
+      <form method="POST" class="bg-white rounded-3xl shadow-2xl w-full max-w-md overflow-hidden animate-scale-in">
+        <input type="hidden" name="action" value="reschedule" />
+        <div class="p-6 border-b border-slate-100 flex items-center justify-between">
+            <h2 class="text-xl font-bold text-slate-800">Proponer Reagendado</h2>
+            <button type="button" id="closeRescheduleBtn" class="text-slate-400 hover:text-slate-600 text-2xl font-light">&times;</button>
+        </div>
+        <div class="p-6 space-y-4">
+            <div>
+                <label class="block text-xs font-bold text-slate-500 uppercase tracking-widest mb-1">Nueva Fecha</label>
+                <input type="date" name="rescheduleDate" id="resDate" required class="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-2" />
+            </div>
+            <div>
+                <label class="block text-xs font-bold text-slate-500 uppercase tracking-widest mb-1">Horarios Disponibles</label>
+                <div id="resSlots" class="grid grid-cols-4 gap-2 p-3 bg-slate-50 rounded-xl min-h-[40px] text-[10px] text-center text-slate-400 italic">
+                    Selecciona una fecha...
+                </div>
+                <input type="hidden" name="rescheduleTime" id="resTime" required />
+            </div>
+        </div>
+        <div class="p-6 bg-slate-50 border-t border-slate-100 flex justify-end gap-3">
+            <button type="button" id="cancelResBtn" class="px-4 py-2 text-slate-500 font-bold">Cancelar</button>
+            <button type="submit" id="confirmResBtn" disabled class="px-6 py-2 bg-indigo-600 text-white font-bold rounded-xl shadow-lg disabled:opacity-50">Proponer</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <script define:vars={{ doctorId: app.doctorId }}>
+    const modal = document.getElementById('rescheduleModal');
+    const openBtn = document.getElementById('openRescheduleBtn');
+    const closeBtn = document.getElementById('closeRescheduleBtn');
+    const cancelBtn = document.getElementById('cancelResBtn');
+    const resDate = document.getElementById('resDate');
+    const resSlots = document.getElementById('resSlots');
+    const resTime = document.getElementById('resTime');
+    const confirmBtn = document.getElementById('confirmResBtn');
+
+    openBtn?.addEventListener('click', () => modal?.classList.remove('hidden'));
+    closeBtn?.addEventListener('click', () => modal?.classList.add('hidden'));
+    cancelBtn?.addEventListener('click', () => modal?.classList.add('hidden'));
+
+    resDate?.addEventListener('change', async (e) => {
+        const date = e.target.value;
+        if (!date) return;
+
+        resSlots.innerHTML = '<div class="col-span-4 py-2 animate-pulse">Cargando...</div>';
+        
+        try {
+            const res = await fetch(`/api/slots?doctorId=${doctorId}&date=${date}`);
+            const data = await res.json();
+            
+            if (data.slots && data.slots.length > 0) {
+                resSlots.innerHTML = data.slots.map(s => `
+                    <button type="button" class="res-slot-btn py-1.5 border border-slate-200 rounded-lg bg-white hover:bg-indigo-500 hover:text-white transition-all text-xs font-bold" data-time="${s}">${s}</button>
+                `).join('');
+
+                document.querySelectorAll('.res-slot-btn').forEach(btn => {
+                    btn.addEventListener('click', (ev) => {
+                        resTime.value = ev.target.dataset.time;
+                        document.querySelectorAll('.res-slot-btn').forEach(b => b.classList.remove('bg-indigo-600', 'text-white', 'border-indigo-600'));
+                        ev.target.classList.add('bg-indigo-600', 'text-white', 'border-indigo-600');
+                        confirmBtn.disabled = false;
+                    });
+                });
+            } else {
+                resSlots.innerHTML = '<p class="col-span-4 text-rose-500 text-[10px]">Sin disponibilidad.</p>';
+                confirmBtn.disabled = true;
+            }
+        } catch (error) {
+            resSlots.innerHTML = '<p class="col-span-4 text-rose-500 text-[10px]">Error.</p>';
+        }
+    });
+  </script>
 </Layout>

@@ -56,6 +56,21 @@ if (Astro.request.method === 'POST') {
           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'Activa')`,
     args: [finalPatientId, consId, campus, patientData?.sport || 'Ninguno', type, zone, severity, date, notes]
   });
+
+  // Auto-vinculación si el autor es médico/especialista
+  const roleMap: Record<number, string> = {
+    [ROLES.DOCTOR]: 'Doctor',
+    [ROLES.NUTRIOLOGO]: 'Nutritionist',
+    [ROLES.ENTRENADOR]: 'Coach'
+  };
+  const creatorRole = user?.roleId ? roleMap[user.roleId] : null;
+
+  if (creatorRole && user?.userId) {
+    await db.execute({
+      sql: `INSERT OR IGNORE INTO User_Patient (userId, patientId, roleType) VALUES (?, ?, ?)`,
+      args: [user.userId, finalPatientId, creatorRole]
+    });
+  }
   
   // 5. SISTEMA DE ALERTAS COLABORATIVAS:
   // Si se marcó "notificar" y el paciente es atleta, enviamos una alerta a sus entrenadores.

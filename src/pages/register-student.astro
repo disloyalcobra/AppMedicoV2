@@ -69,18 +69,28 @@ if (Astro.request.method === 'POST') {
           }
         ], "write");
 
+        const patientIdResult = await db.execute({ sql: `SELECT userId FROM Users WHERE email = ?`, args: [email]});
+        const newUserId = Number(patientIdResult.rows[0].userId);
+
         if (isAthlete === 1 && coachId) {
-            const patientIdResult = await db.execute({ sql: `SELECT userId FROM Users WHERE email = ?`, args: [email]});
-            if(patientIdResult.rows.length > 0) {
-               const newPatientId = Number(patientIdResult.rows[0].userId);
-               await db.execute({
-                sql: `INSERT INTO User_Patient (userId, patientId, roleType) VALUES (?, ?, 'Coach')`,
-                args: [coachId, newPatientId]
-               });
-            }
+            await db.execute({
+            sql: `INSERT INTO User_Patient (userId, patientId, roleType) VALUES (?, ?, 'Coach')`,
+            args: [coachId, newUserId]
+            });
         }
 
-        success = 'Cuenta creada exitosamente. Ya puedes iniciar sesión.';
+        // Auto-login after successful registration
+        const sessionPayload = Buffer.from(
+          JSON.stringify({
+            userId: newUserId,
+            roleId: ROLES.ESTUDIANTE,
+            firstName: firstName,
+            lastName: lastName,
+          }),
+        ).toString("base64");
+
+        Astro.cookies.set("session", sessionPayload, { path: "/" });
+        return Astro.redirect("/");
       }
     }
   } catch (e) {

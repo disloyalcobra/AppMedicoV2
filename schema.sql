@@ -1,7 +1,7 @@
 -- ─── MÓDULO 1: USUARIOS Y ACCESO ────────────────────────────────────
 CREATE TABLE IF NOT EXISTS Roles (  
   roleId   INTEGER PRIMARY KEY AUTOINCREMENT,  
-  roleName TEXT NOT NULL  
+  roleName TEXT NOT NULL UNIQUE
 );
 
 CREATE TABLE IF NOT EXISTS Users (  
@@ -15,39 +15,78 @@ CREATE TABLE IF NOT EXISTS Users (
   FOREIGN KEY (roleId) REFERENCES Roles(roleId)  
 );
 
--- ─── MÓDULO 2: PACIENTES Y PERFILES ─────────────────────────────────
+-- ─── MÓDULO 2: PACIENTES Y RELACIONES ────────────────────────────────
 CREATE TABLE IF NOT EXISTS Patients (  
   patientId   INTEGER PRIMARY KEY,  
   dateOfBirth DATE,  
-  gender      TEXT    CHECK(length(gender) = 1),  
+  gender      TEXT CHECK(length(gender) = 1),  
   bloodType   TEXT,  
   allergies   TEXT,  
   weight      DECIMAL,  
   height      DECIMAL,  
-  isAthlete   INTEGER NOT NULL DEFAULT 0, -- 0 = No, 1 = Sí  
-  schoolLevel TEXT,  -- 'Primaria','Secundaria','Preparatoria','Universidad'  
+  isAthlete   INTEGER NOT NULL DEFAULT 0,  
+  schoolLevel TEXT,
   FOREIGN KEY (patientId) REFERENCES Users(userId)  
 );
 
-CREATE TABLE IF NOT EXISTS Coach_Athlete (  
-  coachId   INTEGER NOT NULL,  
-  patientId INTEGER NOT NULL,  
-  PRIMARY KEY (coachId, patientId),  
-  FOREIGN KEY (coachId)   REFERENCES Users(userId),  
-  FOREIGN KEY (patientId) REFERENCES Patients(patientId)  
+-- 🔥 RELACIÓN UNIFICADA RBAC
+CREATE TABLE IF NOT EXISTS User_Patient (
+  userId    INTEGER NOT NULL,
+  patientId INTEGER NOT NULL,
+  roleType  TEXT NOT NULL CHECK (roleType IN ('Doctor','Nutritionist','Coach')),
+  createdAt DATETIME DEFAULT CURRENT_TIMESTAMP,
+  PRIMARY KEY (userId, patientId, roleType),
+  FOREIGN KEY (userId) REFERENCES Users(userId),
+  FOREIGN KEY (patientId) REFERENCES Patients(patientId)
 );
 
--- ─── MÓDULO 3: CLÍNICO ──────────────────────────────────────────────
+-- ─── MÓDULO 3: DISPONIBILIDAD MÉDICA ────────────────────────────────
+CREATE TABLE IF NOT EXISTS Doctor_Availability (
+  availabilityId INTEGER PRIMARY KEY AUTOINCREMENT,
+  doctorId INTEGER NOT NULL,
+  dayOfWeek INTEGER NOT NULL CHECK (dayOfWeek BETWEEN 0 AND 6),
+  startTime TEXT NOT NULL,
+  endTime   TEXT NOT NULL,
+  slotDuration INTEGER NOT NULL DEFAULT 30,
+  isActive INTEGER NOT NULL DEFAULT 1,
+  FOREIGN KEY (doctorId) REFERENCES Users(userId)
+);
+
+-- ─── MÓDULO 4: CITAS (CORE) ─────────────────────────────────────────
 CREATE TABLE IF NOT EXISTS Appointments (  
   appointmentId INTEGER PRIMARY KEY AUTOINCREMENT,  
   patientId     INTEGER NOT NULL,  
   doctorId      INTEGER NOT NULL,  
   dateTime      DATETIME NOT NULL,  
-  status        TEXT NOT NULL DEFAULT 'Pendiente',  
+  
+  status TEXT NOT NULL CHECK (
+    status IN ('Pendiente','Confirmada','Reagendada','Cancelada','Rechazada')
+  ) DEFAULT 'Pendiente',
+
+  reason TEXT,
+  proposedDateTime DATETIME, 
+  createdAt DATETIME DEFAULT CURRENT_TIMESTAMP,
+  
   FOREIGN KEY (patientId) REFERENCES Patients(patientId),  
   FOREIGN KEY (doctorId)  REFERENCES Users(userId)  
 );
 
+-- 🔥 EVITA DOBLE RESERVA
+CREATE UNIQUE INDEX IF NOT EXISTS idx_unique_slot
+ON Appointments(doctorId, dateTime)
+WHERE status IN ('Pendiente','Confirmada');
+
+-- ─── ÍNDICES DE RENDIMIENTO ─────────────────────────────────────────
+CREATE INDEX IF NOT EXISTS idx_appointments_doctor
+ON Appointments(doctorId);
+
+CREATE INDEX IF NOT EXISTS idx_appointments_patient
+ON Appointments(patientId);
+
+CREATE INDEX IF NOT EXISTS idx_appointments_date
+ON Appointments(dateTime);
+
+-- ─── MÓDULO 5: CLÍNICO ──────────────────────────────────────────────
 CREATE TABLE IF NOT EXISTS Consultations (  
   consultationId INTEGER PRIMARY KEY AUTOINCREMENT,  
   appointmentId  INTEGER NOT NULL,  
@@ -60,9 +99,18 @@ CREATE TABLE IF NOT EXISTS Consultations (
 CREATE TABLE IF NOT EXISTS ClinicalFiles (  
   fileId         INTEGER PRIMARY KEY AUTOINCREMENT,  
   consultationId INTEGER NOT NULL,  
-  fileType       TEXT    NOT NULL,  
-  fileUrl        TEXT    NOT NULL,  
+  fileType       TEXT NOT NULL,  
+  fileUrl        TEXT NOT NULL,  
   FOREIGN KEY (consultationId) REFERENCES Consultations(consultationId)  
+);
+
+CREATE TABLE IF NOT EXISTS Medications (  
+  medicationId     INTEGER PRIMARY KEY AUTOINCREMENT,  
+  brandName        TEXT NOT NULL,  
+  activeIngredient TEXT,  
+  presentation     TEXT,  
+  currentStock     INTEGER NOT NULL DEFAULT 0,  
+  reorderPoint     INTEGER NOT NULL DEFAULT 0  
 );
 
 CREATE TABLE IF NOT EXISTS Prescriptions (  
@@ -76,50 +124,41 @@ CREATE TABLE IF NOT EXISTS Prescriptions (
   FOREIGN KEY (medicationId)   REFERENCES Medications(medicationId)  
 );
 
--- ─── MÓDULO 4: LESIONES ─────────────────────────────────────────────
+-- ─── MÓDULO 6: LESIONES ─────────────────────────────────────────────
 CREATE TABLE IF NOT EXISTS Injuries (  
   injuryId          INTEGER PRIMARY KEY AUTOINCREMENT,  
   patientId         INTEGER NOT NULL,  
   consultationId    INTEGER NOT NULL,  
   coachId           INTEGER, 
-  campusLocation    TEXT    NOT NULL,  
+  campusLocation    TEXT NOT NULL,  
   sport             TEXT,    
-  injuryType        TEXT    NOT NULL,  
-  bodyZone          TEXT    NOT NULL,  
-  severity          TEXT    NOT NULL CHECK(severity IN ('Leve', 'Moderada', 'Grave')),  
-  injuryDate        DATE    NOT NULL,  
+  injuryType        TEXT NOT NULL,  
+  bodyZone          TEXT NOT NULL,  
+  severity          TEXT NOT NULL CHECK(severity IN ('Leve','Moderada','Grave')),  
+  injuryDate        DATE NOT NULL,  
   estimatedRecovery DATE,   
   requiresInsurance INTEGER NOT NULL DEFAULT 0, 
   insuranceNotes    TEXT,   
   treatment         TEXT,  
   observations      TEXT,  
-  status            TEXT    NOT NULL DEFAULT 'Activa' CHECK(status IN ('Activa', 'En recuperación', 'Recuperada')),  
+  status            TEXT NOT NULL DEFAULT 'Activa' CHECK(status IN ('Activa','En recuperación','Recuperada')),  
   createdAt         DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,  
   FOREIGN KEY (patientId)      REFERENCES Patients(patientId),  
   FOREIGN KEY (consultationId) REFERENCES Consultations(consultationId),  
   FOREIGN KEY (coachId)        REFERENCES Users(userId)  
 );
 
--- ─── MÓDULO 5: INVENTARIO ───────────────────────────────────────────
-CREATE TABLE IF NOT EXISTS Medications (  
-  medicationId    INTEGER PRIMARY KEY AUTOINCREMENT,  
-  brandName       TEXT    NOT NULL,  
-  activeIngredient TEXT,  
-  presentation    TEXT,   
-  currentStock    INTEGER NOT NULL DEFAULT 0,  
-  reorderPoint    INTEGER NOT NULL DEFAULT 0  
-);
-
+-- ─── MÓDULO 7: INVENTARIO ───────────────────────────────────────────
 CREATE TABLE IF NOT EXISTS Batches (  
   batchId        INTEGER PRIMARY KEY AUTOINCREMENT,  
   medicationId   INTEGER NOT NULL,  
   quantity       INTEGER NOT NULL,  
-  entryDate      DATE    NOT NULL,  
-  expirationDate DATE    NOT NULL,  
+  entryDate      DATE NOT NULL,  
+  expirationDate DATE NOT NULL,  
   FOREIGN KEY (medicationId) REFERENCES Medications(medicationId)  
 );
 
--- ─── MÓDULO 6: NUTRICIÓN ────────────────────────────────────────────
+-- ─── MÓDULO 8: NUTRICIÓN ────────────────────────────────────────────
 CREATE TABLE IF NOT EXISTS NutritionalProfiles (  
   profileId              INTEGER PRIMARY KEY AUTOINCREMENT,  
   patientId              INTEGER NOT NULL UNIQUE, 
@@ -140,17 +179,17 @@ CREATE TABLE IF NOT EXISTS NutritionalProfiles (
 );
 
 CREATE TABLE IF NOT EXISTS NutritionalPlans (  
-  planId                  INTEGER PRIMARY KEY AUTOINCREMENT,  
-  patientId               INTEGER NOT NULL,  
-  nutritionistId          INTEGER NOT NULL,  
-  caloricRequirement      INTEGER,  
-  macrosDistribution      TEXT,  
-  weeklyMenu              TEXT,   
-  equivalencesList        TEXT,  
-  generalRecommendations  TEXT,  
-  pdfUrl                  TEXT,  
-  patientAccepted         INTEGER NOT NULL DEFAULT 0, 
-  creationDate            DATE    NOT NULL DEFAULT CURRENT_DATE,  
+  planId                 INTEGER PRIMARY KEY AUTOINCREMENT,  
+  patientId              INTEGER NOT NULL,  
+  nutritionistId         INTEGER NOT NULL,  
+  caloricRequirement     INTEGER,  
+  macrosDistribution     TEXT,  
+  weeklyMenu             TEXT,   
+  equivalencesList       TEXT,  
+  generalRecommendations TEXT,  
+  pdfUrl                 TEXT,  
+  patientAccepted        INTEGER NOT NULL DEFAULT 0, 
+  creationDate           DATE NOT NULL DEFAULT CURRENT_DATE,  
   FOREIGN KEY (patientId)      REFERENCES Patients(patientId),  
   FOREIGN KEY (nutritionistId) REFERENCES Users(userId)  
 );
@@ -165,7 +204,7 @@ CREATE TABLE IF NOT EXISTS NutritionalFollowUps (
   compliancePercentage DECIMAL,  
   adjustmentsMade      TEXT,  
   newGoals             TEXT,  
-  followUpDate         DATE    NOT NULL,  
+  followUpDate         DATE NOT NULL,  
   FOREIGN KEY (planId)         REFERENCES NutritionalPlans(planId),  
   FOREIGN KEY (consultationId) REFERENCES Consultations(consultationId)  
 );
@@ -178,16 +217,16 @@ CREATE TABLE IF NOT EXISTS NutritionalDischarges (
   treatmentDurationDays      INTEGER,  
   maintenanceRecommendations TEXT,  
   dischargeReason            TEXT,    
-  dischargeDate              DATE    NOT NULL,  
+  dischargeDate              DATE NOT NULL,  
   FOREIGN KEY (planId) REFERENCES NutritionalPlans(planId)  
 );
 
--- ─── MÓDULO 7: INTEGRACIÓN Y ALERTAS ────────────────────────────────
+-- ─── MÓDULO 9: NOTAS Y ALERTAS ──────────────────────────────────────
 CREATE TABLE IF NOT EXISTS CollaborativeNotes (  
   noteId      INTEGER PRIMARY KEY AUTOINCREMENT,  
   patientId   INTEGER NOT NULL,  
   authorId    INTEGER NOT NULL,  
-  noteContent TEXT    NOT NULL,  
+  noteContent TEXT NOT NULL,  
   isAlert     INTEGER NOT NULL DEFAULT 0, 
   alertTags   TEXT,  
   createdAt   DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,  
@@ -195,6 +234,7 @@ CREATE TABLE IF NOT EXISTS CollaborativeNotes (
   FOREIGN KEY (authorId)  REFERENCES Users(userId)  
 );
 
+-- ─── ROLES INICIALES ────────────────────────────────────────────────
 INSERT INTO Roles (roleName) VALUES  
   ('Administrador'),  
   ('Jefe Médico'),  

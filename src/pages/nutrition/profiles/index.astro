@@ -4,31 +4,37 @@
  * Esta página muestra un resumen de la situación nutricional de todos los pacientes.
  * Es accesible para Nutriólogos, Médicos, Jefes y Entrenadores (RBAC).
  */
-import Layout from '../../../layouts/Layout.astro';
-import { ROLES, checkRole } from '../../../functions/checkRole';
-import { db } from '../../../turso';
+import Layout from "../../../layouts/Layout.astro";
+import { ROLES, checkRole } from "../../../functions/checkRole";
+import { db } from "../../../turso";
 
 const user = Astro.locals.user;
-if (!checkRole(user, [ROLES.NUTRIOLOGO, ROLES.DOCTOR, ROLES.JEFE_MEDICO, ROLES.ADMINISTRADOR, ROLES.ENTRENADOR])) {
-  return Astro.redirect('/403');
+if (
+  !checkRole(user, [
+    ROLES.NUTRIOLOGO,
+    ROLES.DOCTOR,
+    ROLES.JEFE_MEDICO,
+    ROLES.ADMINISTRADOR,
+    ROLES.ENTRENADOR,
+  ])
+) {
+  return Astro.redirect("/403");
 }
 
 /**
- * CONSULTA CENTRAL: 
+ * CONSULTA CENTRAL:
  * Obtener pacientes y su último perfil nutricional.
  * Incluye subconsultas para traer el IMC más reciente de los seguimientos (FollowUps)
  * y verificar si ya existe un plan de nutrición activo.
  */
 const isNutritionist = user?.roleId === ROLES.NUTRIOLOGO;
 
-// Búsqueda
-const q = Astro.url.searchParams.get('q')?.trim() || '';
-
 let profilesRes;
 
 if (isNutritionist) {
   // Nutriólogo: solo ve sus propios pacientes asignados vía User_Patient
-  let sqlQuery = `SELECT 
+  profilesRes = await db.execute({
+    sql: `SELECT 
       p.patientId, 
       u.firstName, 
       u.lastName, 
@@ -44,24 +50,14 @@ if (isNutritionist) {
     JOIN Users u ON p.patientId = u.userId
     JOIN User_Patient up ON p.patientId = up.patientId
     LEFT JOIN NutritionalProfiles np ON p.patientId = np.patientId
-    WHERE up.userId = ? AND up.roleType = 'Nutritionist'`;
-  
-  let args: any[] = [Number(user?.userId)];
-  
-  if (q) {
-      sqlQuery += ` AND (u.firstName LIKE ? OR u.lastName LIKE ? OR p.patientId LIKE ?)`;
-      args.push(`%${q}%`, `%${q}%`, `%${q}%`);
-  }
-  
-  sqlQuery += ` ORDER BY u.firstName ASC, u.lastName ASC`;
-  
-  profilesRes = await db.execute({
-    sql: sqlQuery,
-    args: args
+    WHERE up.userId = ? AND up.roleType = 'Nutritionist'
+    ORDER BY u.firstName ASC, u.lastName ASC`,
+    args: [Number(user?.userId)],
   });
 } else {
   // Admin / Jefe Médico / Doctor / Entrenador: ven todos
-  let sqlQuery = `SELECT 
+  profilesRes = await db.execute(`
+    SELECT 
       p.patientId, 
       u.firstName, 
       u.lastName, 
@@ -75,21 +71,9 @@ if (isNutritionist) {
       (SELECT planId FROM NutritionalPlans WHERE patientId = p.patientId ORDER BY creationDate DESC LIMIT 1) as planId
     FROM Patients p
     JOIN Users u ON p.patientId = u.userId
-    LEFT JOIN NutritionalProfiles np ON p.patientId = np.patientId`;
-    
-  let args: any[] = [];
-  
-  if (q) {
-      sqlQuery += ` WHERE (u.firstName LIKE ? OR u.lastName LIKE ? OR p.patientId LIKE ?)`;
-      args.push(`%${q}%`, `%${q}%`, `%${q}%`);
-  }
-  
-  sqlQuery += ` ORDER BY u.firstName ASC, u.lastName ASC`;
-  
-  profilesRes = await db.execute({
-      sql: sqlQuery,
-      args: args
-  });
+    LEFT JOIN NutritionalProfiles np ON p.patientId = np.patientId
+    ORDER BY u.firstName ASC, u.lastName ASC
+  `);
 }
 
 const patients = profilesRes.rows;
@@ -97,136 +81,215 @@ const patients = profilesRes.rows;
 
 <Layout title="Perfiles Nutricionales">
   {/* Encabezado */}
-  <div class="mb-6 flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
+  <div
+    class="mb-8 flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4"
+  >
     <div>
-      <h1 class="text-3xl font-bold text-slate-800 tracking-tight">Evaluaciones Nutricionales</h1>
-      <p class="text-slate-500 mt-1">Gestión de perfiles clínicos y planes alimenticios</p>
+      <h1 class="text-3xl font-bold text-slate-800 tracking-tight">
+        Evaluaciones Nutricionales
+      </h1>
+      <p class="text-slate-500 mt-1">
+        Gestión de perfiles clínicos y planes alimenticios
+      </p>
     </div>
-    
-    <a href="/patients" class="bg-white border border-slate-200 text-slate-700 font-medium py-2.5 px-4 rounded-xl shadow-sm hover:bg-slate-50 transition-all flex items-center gap-2">
-      <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="text-slate-500"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M22 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
+
+    <a
+      href="/patients"
+      class="bg-white border border-slate-200 text-slate-700 font-medium py-2.5 px-4 rounded-xl shadow-sm hover:bg-slate-50 transition-all flex items-center gap-2"
+    >
+      <svg
+        xmlns="http://www.w3.org/2000/svg"
+        width="18"
+        height="18"
+        viewBox="0 0 24 24"
+        fill="none"
+        stroke="currentColor"
+        stroke-width="2"
+        stroke-linecap="round"
+        stroke-linejoin="round"
+        class="text-slate-500"
+        ><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"></path><circle
+          cx="9"
+          cy="7"
+          r="4"></circle><path d="M22 21v-2a4 4 0 0 0-3-3.87"></path><path
+          d="M16 3.13a4 4 0 0 1 0 7.75"></path></svg
+      >
       Ver Directorio de Pacientes
     </a>
   </div>
 
-  <div class="glass-card rounded-2xl p-4 mb-6">
-    <form method="GET" class="flex items-center gap-4">
-      <div class="relative flex-1">
-        <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="absolute left-3 top-3 text-slate-400"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/></svg>
-        <input type="text" name="q" value={q} placeholder="Buscar por nombre o expediente..." class="w-full bg-white/50 border border-slate-200/60 rounded-xl pl-10 pr-4 py-2 text-slate-800 focus:outline-none focus:ring-2 focus:ring-teal-500" />
-      </div>
-      <button type="submit" class="px-4 py-2 bg-gradient-to-r from-teal-500 to-emerald-500 text-white font-medium rounded-xl shadow-sm hover:shadow-md transition-all">Buscar</button>
-      {q && <a href="/nutrition/profiles" class="px-4 py-2 border border-slate-200 text-slate-600 font-medium rounded-xl hover:bg-slate-50 transition-colors">Limpiar</a>}
-    </form>
-  </div>
-
   {/* Grid de Tarjetas de Pacientes - Masonry Layout */}
   <div class="columns-1 md:columns-2 lg:columns-3 gap-6">
-    {patients.length === 0 ? (
-      <div class="w-full text-center py-10 text-slate-500 break-inside-avoid">
-        No hay pacientes registrados en el sistema.
-      </div>
-    ) : (
-      patients.map(p => (
-        /* Navegación inteligente: si no tiene perfil, lo manda a crear uno */
-        <a href={p.profileId ? `/nutrition/profiles/${p.profileId}` : `/nutrition/profiles/add?patientId=${p.patientId}`} class="block group break-inside-avoid mb-6">
-          <div class="glass-card rounded-2xl p-6 transition-all duration-300 group-hover:scale-[1.02] group-hover:shadow-xl relative overflow-hidden border border-white/80 flex flex-col">
-
-            {/* Badge de Atleta */}
-            {p.isAthlete === 1 && (
-              <div class="absolute top-4 right-4 bg-amber-100 text-amber-800 text-[10px] font-bold px-2 py-1 rounded-full border border-amber-200 uppercase tracking-widest flex items-center gap-1">
-                 Atleta
-              </div>
-            )}
-
-            {/* Header - Info del paciente */}
-            <div class="flex items-center gap-4 mb-5">
-              <div class={`w-14 h-14 rounded-full flex items-center justify-center text-xl font-bold shadow-sm border shrink-0 ${p.profileId ? 'bg-emerald-50 text-emerald-700 border-emerald-200' : 'bg-slate-100 text-slate-500 border-slate-200'}`}>
-                {String(p.firstName)[0]}{String(p.lastName)[0]}
-              </div>
-              <div class="pr-10 min-w-0">
-                <h3 class="text-lg font-bold text-slate-800 leading-tight truncate">{p.firstName} {p.lastName}</h3>
-                <p class="text-xs text-slate-500 font-medium mt-0.5">Exp. #{String(p.patientId).padStart(4, '0')}</p>
-              </div>
-            </div>
-
-            {/* Body - Contenido con altura fija */}
-            <div class="flex-1 flex flex-col">
-              {p.profileId ? (
-                /* Contenido si ya tiene perfil nutricional */
-                <div class="flex flex-col flex-1">
-                  <div class="bg-white/40 rounded-xl p-3 mb-4 border border-white/60">
-                    <div class="flex justify-between items-center mb-1">
-                      <p class="text-[10px] uppercase tracking-widest text-slate-400 font-bold mb-1">Diagnóstico Actual</p>
-                      <span class={`text-[9px] px-2 py-0.5 rounded-full font-bold uppercase tracking-wider border ${
-                          p.metabolicRisk === 'Alto' ? 'bg-rose-50 text-rose-700 border-rose-200' :
-                          p.metabolicRisk === 'Moderado' ? 'bg-amber-50 text-amber-700 border-amber-200' :
-                          'bg-emerald-50 text-emerald-700 border-emerald-200'
-                      }`}>
-                        Riesgo {p.metabolicRisk || 'No evaluado'}
-                      </span>
-                    </div>
-                    <p class="font-semibold text-sm text-slate-700 truncate">{p.nutritionalDiagnosis || 'Ver detalles'}</p>
-                  </div>
-
-                  <div class="grid grid-cols-2 gap-4 text-sm mb-4">
-                    <div class="bg-slate-50/50 rounded-lg p-3">
-                      <p class="text-slate-400 text-xs font-semibold mb-1">IMC Actual</p>
-                      <p class="font-bold text-slate-800 text-xl">{p.latestBmi || '--'}</p>
-                    </div>
-                    <div class="bg-slate-50/50 rounded-lg p-3">
-                      <p class="text-slate-400 text-xs font-semibold mb-1">% Grasa Corporal</p>
-                      <p class="font-bold text-slate-800 text-xl">{p.bodyFatPercentage ? p.bodyFatPercentage + '%' : '--'}</p>
-                    </div>
-                  </div>
-
-                  {/* Espaciador para empujar el footer */}
-                  <div class="flex-1"></div>
-
-                  {/* Footer */}
-                  <div class="flex items-center justify-between border-t border-slate-100 pt-4 mt-auto">
-                    <span class="text-xs text-slate-400 font-medium font-mono border bg-slate-50 px-2 py-1 rounded">
-                      {p.date ? String(p.date).split(' ')[0] : 'Hoy'}
-                    </span>
-
-                    {p.planId ? (
-                       <span class="text-sm font-semibold text-emerald-600 group-hover:text-emerald-700 transition-colors flex items-center gap-1">
-                         Ver Plan <span aria-hidden="true">&rarr;</span>
-                       </span>
-                    ) : (
-                       <span class="text-sm font-semibold text-amber-600 group-hover:text-amber-700 transition-colors flex items-center gap-1">
-                         Crear Plan <span aria-hidden="true">&rarr;</span>
-                       </span>
-                    )}
-                  </div>
+    {
+      patients.length === 0 ? (
+        <div class="w-full text-center py-10 text-slate-500 break-inside-avoid">
+          No hay pacientes registrados en el sistema.
+        </div>
+      ) : (
+        patients.map((p) => (
+          /* Navegación inteligente: si no tiene perfil, lo manda a crear uno */
+          <a
+            href={
+              p.profileId
+                ? `/nutrition/profiles/${p.profileId}`
+                : `/nutrition/profiles/add?patientId=${p.patientId}`
+            }
+            class="block group break-inside-avoid mb-6"
+          >
+            <div class="glass-card rounded-2xl p-6 transition-all duration-300 group-hover:scale-[1.02] group-hover:shadow-xl relative overflow-hidden border border-white/80 flex flex-col">
+              {/* Badge de Atleta */}
+              {p.isAthlete === 1 && (
+                <div class="absolute top-4 right-4 bg-amber-100 text-amber-800 text-[10px] font-bold px-2 py-1 rounded-full border border-amber-200 uppercase tracking-widest flex items-center gap-1">
+                  Atleta
                 </div>
-              ) : (
-                /* Estado vacío (Sin evaluación inicial) */
-                <div class="flex flex-col items-center justify-center text-center flex-1 border-2 border-dashed border-slate-200 rounded-xl bg-slate-50/50 p-6">
-                  <div class="w-12 h-12 rounded-full bg-teal-50 flex items-center justify-center text-teal-600 mb-3">
-                    <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14"/><path d="M12 5v14"/></svg>
+              )}
+
+              {/* Header - Info del paciente */}
+              <div class="flex items-center gap-4 mb-5">
+                <div
+                  class={`w-14 h-14 rounded-full flex items-center justify-center text-xl font-bold shadow-sm border shrink-0 ${p.profileId ? "bg-emerald-50 text-emerald-700 border-emerald-200" : "bg-slate-100 text-slate-500 border-slate-200"}`}
+                >
+                  {String(p.firstName)[0]}
+                  {String(p.lastName)[0]}
+                </div>
+                <div class="pr-10 min-w-0">
+                  <h3 class="text-lg font-bold text-slate-800 leading-tight truncate">
+                    {p.firstName} {p.lastName}
+                  </h3>
+                  <p class="text-xs text-slate-500 font-medium mt-0.5">
+                    Exp. #{String(p.patientId).padStart(4, "0")}
+                  </p>
+                </div>
+              </div>
+
+              {/* Body - Contenido con altura fija */}
+              <div class="flex-1 flex flex-col">
+                {p.profileId ? (
+                  /* Contenido si ya tiene perfil nutricional */
+                  <div class="flex flex-col flex-1">
+                    <div class="bg-white/40 rounded-xl p-3 mb-4 border border-white/60">
+                      <div class="flex justify-between items-center mb-1">
+                        <p class="text-[10px] uppercase tracking-widest text-slate-400 font-bold mb-1">
+                          Diagnóstico Actual
+                        </p>
+                        <span
+                          class={`text-[9px] px-2 py-0.5 rounded-full font-bold uppercase tracking-wider border ${
+                            p.metabolicRisk === "Alto"
+                              ? "bg-rose-50 text-rose-700 border-rose-200"
+                              : p.metabolicRisk === "Moderado"
+                                ? "bg-amber-50 text-amber-700 border-amber-200"
+                                : "bg-emerald-50 text-emerald-700 border-emerald-200"
+                          }`}
+                        >
+                          Riesgo {p.metabolicRisk || "No evaluado"}
+                        </span>
+                      </div>
+                      <p class="font-semibold text-sm text-slate-700 truncate">
+                        {p.nutritionalDiagnosis || "Ver detalles"}
+                      </p>
+                    </div>
+
+                    <div class="grid grid-cols-2 gap-4 text-sm mb-4">
+                      <div class="bg-slate-50/50 rounded-lg p-3">
+                        <p class="text-slate-400 text-xs font-semibold mb-1">
+                          IMC Actual
+                        </p>
+                        <p class="font-bold text-slate-800 text-xl">
+                          {p.latestBmi || "--"}
+                        </p>
+                      </div>
+                      <div class="bg-slate-50/50 rounded-lg p-3">
+                        <p class="text-slate-400 text-xs font-semibold mb-1">
+                          % Grasa Corporal
+                        </p>
+                        <p class="font-bold text-slate-800 text-xl">
+                          {p.bodyFatPercentage
+                            ? p.bodyFatPercentage + "%"
+                            : "--"}
+                        </p>
+                      </div>
+                    </div>
+
+                    {/* Espaciador para empujar el footer */}
+                    <div class="flex-1" />
+
+                    {/* Footer */}
+                    <div class="flex items-center justify-between border-t border-slate-100 pt-4 mt-auto">
+                      <span class="text-xs text-slate-400 font-medium font-mono border bg-slate-50 px-2 py-1 rounded">
+                        {p.date ? String(p.date).split(" ")[0] : "Hoy"}
+                      </span>
+
+                      {p.planId ? (
+                        <span class="text-sm font-semibold text-emerald-600 group-hover:text-emerald-700 transition-colors flex items-center gap-1">
+                          Ver Plan <span aria-hidden="true">&rarr;</span>
+                        </span>
+                      ) : (
+                        <span class="text-sm font-semibold text-amber-600 group-hover:text-amber-700 transition-colors flex items-center gap-1">
+                          Crear Plan <span aria-hidden="true">&rarr;</span>
+                        </span>
+                      )}
+                    </div>
                   </div>
-                  <p class="text-sm text-slate-600 font-semibold mb-1">Sin evaluación inicial</p>
-                  <p class="text-xs text-slate-400 mb-3 px-4">Crear perfil diagnóstico ahora.</p>
-                  <span class="inline-block px-4 py-1.5 bg-teal-600 text-white text-xs font-bold rounded-lg shadow-sm group-hover:bg-teal-500 transition-colors">
-                    Crear Evaluación
-                  </span>
+                ) : (
+                  /* Estado vacío (Sin evaluación inicial) */
+                  <div class="flex flex-col items-center justify-center text-center flex-1 border-2 border-dashed border-slate-200 rounded-xl bg-slate-50/50 p-6">
+                    <div class="w-12 h-12 rounded-full bg-teal-50 flex items-center justify-center text-teal-600 mb-3">
+                      <svg
+                        xmlns="http://www.w3.org/2000/svg"
+                        width="24"
+                        height="24"
+                        viewBox="0 0 24 24"
+                        fill="none"
+                        stroke="currentColor"
+                        stroke-width="2"
+                        stroke-linecap="round"
+                        stroke-linejoin="round"
+                      >
+                        <path d="M5 12h14" />
+                        <path d="M12 5v14" />
+                      </svg>
+                    </div>
+                    <p class="text-sm text-slate-600 font-semibold mb-1">
+                      Sin evaluación inicial
+                    </p>
+                    <p class="text-xs text-slate-400 mb-3 px-4">
+                      Crear perfil diagnóstico ahora.
+                    </p>
+                    <span class="inline-block px-4 py-1.5 bg-teal-600 text-white text-xs font-bold rounded-lg shadow-sm group-hover:bg-teal-500 transition-colors">
+                      Crear Evaluación
+                    </span>
+                  </div>
+                )}
+              </div>
+
+              {/* Botón de Notas para Nutriólogo */}
+              {user?.roleId === ROLES.NUTRIOLOGO && (
+                <div class="mt-3 pt-3 border-t border-slate-100">
+                  <a
+                    href={`/patients/${p.patientId}?openNotes=true`}
+                    class="flex items-center justify-center gap-2 w-full py-2 bg-rose-50 border border-rose-200 text-rose-700 text-sm font-semibold rounded-lg hover:bg-rose-100 transition-colors"
+                  >
+                    <svg
+                      xmlns="http://www.w3.org/2000/svg"
+                      width="14"
+                      height="14"
+                      viewBox="0 0 24 24"
+                      fill="none"
+                      stroke="currentColor"
+                      stroke-width="2"
+                      stroke-linecap="round"
+                      stroke-linejoin="round"
+                    >
+                      <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z" />
+                    </svg>
+                    Agregar Nota/Alerta
+                  </a>
                 </div>
               )}
             </div>
-
-            {/* Botón de Notas para Nutriólogo */}
-            {user?.roleId === ROLES.NUTRIOLOGO && (
-              <div class="mt-3 pt-3 border-t border-slate-100">
-                <a href={`/patients/${p.patientId}?openNotes=true`} class="flex items-center justify-center gap-2 w-full py-2 bg-rose-50 border border-rose-200 text-rose-700 text-sm font-semibold rounded-lg hover:bg-rose-100 transition-colors">
-                  <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
-                  Agregar Nota/Alerta
-                </a>
-              </div>
-            )}
-          </div>
-        </a>
-      ))
-    )}
+          </a>
+        ))
+      )
+    }
   </div>
 </Layout>

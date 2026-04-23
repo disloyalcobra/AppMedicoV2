@@ -35,6 +35,22 @@ if (user?.roleId === ROLES.ESTUDIANTE && String(user.userId) !== String(id)) {
   return Astro.redirect("/403");
 }
 
+// 3. SEGURIDAD RBAC (Ownership Clínico): Un doctor/nutriologo solo puede ver a sus pacientes vinculados
+let requiredRoleType = "";
+if (user?.roleId === ROLES.DOCTOR) requiredRoleType = "Doctor";
+else if (user?.roleId === ROLES.NUTRIOLOGO) requiredRoleType = "Nutritionist";
+else if (user?.roleId === ROLES.ENTRENADOR) requiredRoleType = "Coach";
+
+if (requiredRoleType && user) {
+  const accessCheck = await db.execute({
+    sql: `SELECT 1 FROM User_Patient WHERE userId = ? AND patientId = ? AND roleType = ?`,
+    args: [user.userId, id, requiredRoleType]
+  });
+  if (accessCheck.rows.length === 0) {
+    return Astro.redirect("/403");
+  }
+}
+
 // --- OBTENCIÓN DE DATOS DESDE TURSO ---
 
 // A. Información básica del Paciente y Usuario
@@ -72,8 +88,8 @@ const patient = {
 
 // B. Citas Médicas (Ordenadas por fecha descendente)
 const aptResult = await db.execute({
-  sql: `SELECT a.appointmentId as id, a.dateTime as date, u.firstName || ' ' || u.lastName as doctor, a.status, a.reason 
-        FROM Appointments a JOIN Users u ON a.doctorId = u.userId 
+  sql: `SELECT a.appointmentId as id, a.dateTime as date, u.firstName || ' ' || u.lastName as doctor, a.status
+        FROM Appointments a JOIN Users u ON a.doctorId = u.userId
         WHERE a.patientId = ? ORDER BY a.dateTime DESC`,
   args: [id],
 });
@@ -82,7 +98,7 @@ const appointments = aptResult.rows.map((r) => ({
   date: String(r.date),
   doctor: "Dr. " + r.doctor,
   status: r.status,
-  reason: String(r.reason || "Sin motivo"),
+  reason: "Sin motivo",
 }));
 
 // C. Consultas Médicas (Incluyendo conteo de sub-elementos vía sub-queries)

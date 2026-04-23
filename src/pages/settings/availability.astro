@@ -1,0 +1,205 @@
+---
+import Layout from '../../layouts/Layout.astro';
+import { ROLES, checkRole } from '../../functions/checkRole';
+import { db } from '../../turso';
+
+const user = Astro.locals.user;
+if (!checkRole(user, [ROLES.DOCTOR, ROLES.JEFE_MEDICO, ROLES.ADMINISTRADOR, ROLES.NUTRIOLOGO])) {
+  return Astro.redirect('/403');
+}
+
+// Run migration if needed
+try {
+  await db.execute({
+    sql: `ALTER TABLE Appointments ADD COLUMN reason TEXT NOT NULL DEFAULT ''`,
+    args: []
+  });
+} catch (e: any) {
+  // Column already exists, ignore error
+}
+
+// Determine which doctor's availability to show/edit
+const isAdmin = user?.roleId === ROLES.ADMINISTRADOR;
+const targetDoctorId = isAdmin
+  ? (Astro.url.searchParams.get('doctorId') ? Number(Astro.url.searchParams.get('doctorId')) : user?.userId)
+  : user?.userId;
+
+// Fetch current availability to pre-fill
+const res = await db.execute({
+    sql: `SELECT * FROM Doctor_Availability WHERE doctorId = ?`,
+    args: [targetDoctorId ?? null]
+});
+
+const currentAvailability = res.rows;
+
+// Get all doctors for admin dropdown
+let doctors: any[] = [];
+if (isAdmin) {
+  const docRes = await db.execute({
+    sql: `SELECT u.userId, u.firstName, u.lastName FROM Users u WHERE u.roleId IN (?, ?, ?)`,
+    args: [ROLES.DOCTOR, ROLES.JEFE_MEDICO, ROLES.NUTRIOLOGO]
+  });
+  doctors = docRes.rows;
+}
+
+const days = [
+  { id: 1, name: 'Lunes' },
+  { id: 2, name: 'Martes' },
+  { id: 3, name: 'Miércoles' },
+  { id: 4, name: 'Jueves' },
+  { id: 5, name: 'Viernes' },
+  { id: 6, name: 'Sábado' },
+  { id: 0, name: 'Domingo' }
+];
+
+// Helper to find existing config for a day
+const getDayConfig = (dayId: number) => {
+    return currentAvailability.find((a: any) => Number(a.dayOfWeek) === dayId);
+};
+---
+
+<Layout title="Disponibilidad Horaria">
+  <div class="mb-8">
+    <h1 class="text-3xl font-bold text-slate-800 tracking-tight">{isAdmin ? 'Gestionar Agenda de Doctor' : 'Mi Agenda de Disponibilidad'}</h1>
+    <p class="text-slate-500 mt-1">Configura los días y horarios en los que estás disponible para recibir citas médicas.</p>
+  </div>
+
+  {isAdmin && (
+    <div class="mb-6 max-w-4xl mx-auto">
+      <label class="block text-sm font-semibold text-slate-700 mb-2">Seleccionar Doctor</label>
+      <select id="doctorSelector" class="bg-white border border-slate-200 rounded-xl px-4 py-2.5 text-slate-800 focus:ring-2 focus:ring-teal-500 outline-none">
+        {doctors.map((d: any) => (
+          <option value={d.userId} selected={d.userId === targetDoctorId}>
+            Dr. {d.firstName} {d.lastName}
+          </option>
+        ))}
+      </select>
+    </div>
+  )}
+
+  <div class="glass-card rounded-3xl p-8 shadow-xl max-w-4xl mx-auto">
+    <div class="space-y-6">
+      {days.map((day) => {
+        const config = getDayConfig(day.id);
+        return (
+          <div class="day-row flex flex-col md:flex-row items-start md:items-center justify-between p-4 rounded-2xl border border-slate-100 hover:border-teal-200 transition-all gap-4" data-day={day.id}>
+            <div class="flex items-center gap-4 w-40">
+              <label class="relative inline-flex items-center cursor-pointer">
+                <input type="checkbox" class="sr-only peer day-toggle" checked={config ? config.isActive === 1 : false} />
+                <div class="w-11 h-6 bg-slate-200 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-teal-300 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-teal-600"></div>
+              </label>
+              <span class="font-bold text-slate-700">{day.name}</span>
+            </div>
+
+            <div class="flex flex-wrap items-center gap-4 flex-1">
+              <div class="flex flex-col">
+                <label class="text-[10px] uppercase font-bold text-slate-400 mb-1 ml-1">Inicio</label>
+                <input type="time" class="start-time bg-white border border-slate-200 rounded-xl px-3 py-2 text-sm focus:ring-2 focus:ring-teal-500 outline-none" value={String(config?.startTime || '08:00')} />
+              </div>
+              <div class="flex flex-col">
+                <label class="text-[10px] uppercase font-bold text-slate-400 mb-1 ml-1">Fin</label>
+                <input type="time" class="end-time bg-white border border-slate-200 rounded-xl px-3 py-2 text-sm focus:ring-2 focus:ring-teal-500 outline-none" value={String(config?.endTime || '16:00')} />
+              </div>
+              <div class="flex flex-col">
+                <label class="text-[10px] uppercase font-bold text-slate-400 mb-1 ml-1">Duración (min)</label>
+                <select class="slot-duration bg-white border border-slate-200 rounded-xl px-3 py-2 text-sm focus:ring-2 focus:ring-teal-500 outline-none">
+                  <option value="15" selected={config?.slotDuration === 15}>15 min</option>
+                  <option value="20" selected={config?.slotDuration === 20}>20 min</option>
+                  <option value="30" selected={config?.slotDuration === 30 || !config}>30 min</option>
+                  <option value="45" selected={config?.slotDuration === 45}>45 min</option>
+                  <option value="60" selected={config?.slotDuration === 60}>60 min</option>
+                </select>
+              </div>
+            </div>
+          </div>
+        );
+      })}
+    </div>
+
+    <div class="mt-10 pt-6 border-t border-slate-100 flex justify-end items-center gap-4">
+      <div id="saveStatus" class="hidden text-sm font-medium"></div>
+      <button id="saveAvailabilityBtn" class="bg-gradient-to-r from-teal-500 to-emerald-500 text-white font-bold py-3 px-8 rounded-2xl shadow-lg hover:shadow-teal-500/20 transition-all flex items-center gap-2">
+        <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"/><polyline points="17 21 17 13 7 13 7 21"/><polyline points="7 3 7 8 15 8"/></svg>
+        Guardar Configuración
+      </button>
+    </div>
+  </div>
+
+  <script>
+    const saveBtn = document.getElementById('saveAvailabilityBtn') as HTMLButtonElement | null;
+    const saveStatus = document.getElementById('saveStatus');
+    const doctorSelector = document.getElementById('doctorSelector') as HTMLSelectElement | null;
+
+    if (doctorSelector) {
+      doctorSelector.addEventListener('change', (e) => {
+        window.location.href = `/settings/availability?doctorId=${(e.target as HTMLSelectElement).value}`;
+      });
+    }
+
+    saveBtn?.addEventListener('click', async () => {
+      const rows = document.querySelectorAll('.day-row');
+      const schedules = Array.from(rows).map(row => {
+        const day = (row as HTMLElement).dataset.day;
+        const isActive = (row.querySelector('.day-toggle') as HTMLInputElement).checked;
+        const startTime = (row.querySelector('.start-time') as HTMLInputElement).value;
+        const endTime = (row.querySelector('.end-time') as HTMLInputElement).value;
+        const slotDuration = Number((row.querySelector('.slot-duration') as HTMLSelectElement).value);
+
+        return {
+          dayOfWeek: Number(day),
+          isActive,
+          startTime,
+          endTime,
+          slotDuration
+        };
+      });
+
+      try {
+        if (saveBtn) {
+            saveBtn.disabled = true;
+            saveBtn.innerHTML = '<div class="w-5 h-5 border-2 border-white/30 border-t-white rounded-full animate-spin mr-2"></div> Guardando...';
+        }
+
+        const body: any = { schedules };
+        if (doctorSelector) {
+          body.doctorId = Number(doctorSelector.value);
+        }
+
+        const res = await fetch('/api/availability', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(body)
+        });
+
+        const data = await res.json();
+
+        if (data.success) {
+          if (saveStatus) {
+            saveStatus.innerText = '¡Configuración guardada con éxito!';
+            saveStatus.classList.remove('hidden', 'text-red-500');
+            saveStatus.classList.add('text-teal-600');
+          }
+          setTimeout(() => {
+            if (saveStatus) saveStatus.classList.add('hidden');
+          }, 3000);
+        } else {
+          throw new Error(data.error);
+        }
+      } catch (error: any) {
+        if (saveStatus) {
+            saveStatus.innerText = 'Error: ' + error.message;
+            saveStatus.classList.remove('hidden', 'text-teal-600');
+            saveStatus.classList.add('text-red-500');
+        }
+      } finally {
+        if (saveBtn) {
+            saveBtn.disabled = false;
+            saveBtn.innerHTML = `
+              <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"/><polyline points="17 21 17 13 7 13 7 21"/><polyline points="7 3 7 8 15 8"/></svg>
+              Guardar Configuración
+            `;
+        }
+      }
+    });
+  </script>
+</Layout>

@@ -62,7 +62,6 @@ if (Astro.request.method === 'POST') {
     ]
   });
 
-  // Obtenemos el ID para redirigir
   const newProf = await db.execute({
       sql: `SELECT profileId FROM NutritionalProfiles WHERE patientId = ?`,
       args: [finalPatientId]
