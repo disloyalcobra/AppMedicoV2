@@ -204,7 +204,7 @@ if (Astro.request.method === 'POST') {
     return Astro.redirect(`/patients/${id}`);
   }
 
-  if (action === 'dismissAlert' && isDoctorOrAdmin) {
+  if (action === 'dismissAlert') {
     const noteId = String(data.get('noteId') || "");
     await db.execute({
       sql: `UPDATE CollaborativeNotes SET status = 'dismissed' WHERE noteId = ?`,
@@ -332,7 +332,7 @@ const ICONS = {
                   <h4 class="font-bold text-rose-900 text-sm italic uppercase tracking-wider">Alerta Médica: {alert.tags}</h4>
                   <div class="flex items-center gap-3">
                     <span class="text-[10px] text-rose-500 font-bold uppercase">{String(alert.createdAt).split(' ')[0]}</span>
-                    {isDoctorOrAdmin && (
+                    {canAddNotes && (
                       <form method="POST" class="opacity-0 group-hover/alert:opacity-100 transition-opacity">
                         <input type="hidden" name="_action" value="dismissAlert" />
                         <input type="hidden" name="noteId" value={String(alert.id)} />
@@ -450,8 +450,10 @@ const ICONS = {
                 <div class="flex items-center gap-4">
                   <span
                     class={`px-2.5 py-1 rounded-lg text-[10px] font-bold uppercase tracking-wider border ${
-                      apt.status === "Completada"
+                      apt.status === "Confirmada"
                         ? "bg-emerald-50 text-emerald-700 border-emerald-200"
+                        : apt.status === "Rechazada" || apt.status === "Cancelada"
+                        ? "bg-rose-50 text-rose-700 border-rose-200"
                         : "bg-amber-50 text-amber-700 border-amber-200"
                     }`}
                   >

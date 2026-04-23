@@ -1,20 +1,20 @@
 ---
-import Layout from '../../layouts/Layout.astro';
-import { ROLES, checkRole } from '../../functions/checkRole';
-import { db } from '../../turso';
+import Layout from "../../layouts/Layout.astro";
+import { ROLES, checkRole } from "../../functions/checkRole";
+import { db } from "../../turso";
 
 const user = Astro.locals.user;
 if (!checkRole(user, [ROLES.DOCTOR, ROLES.JEFE_MEDICO, ROLES.ADMINISTRADOR])) {
-  return Astro.redirect('/403');
+  return Astro.redirect("/403");
 }
 
 const url = Astro.url;
-const patientId = url.searchParams.get('patientId');
-const appointmentId = url.searchParams.get('appointmentId');
+const patientId = url.searchParams.get("patientId");
+const appointmentId = url.searchParams.get("appointmentId");
 
 // Si no hay ID de paciente ni de cita, no podemos iniciar la consulta
 if (!patientId && !appointmentId) {
-  return Astro.redirect('/patients?error=missing_params');
+  return Astro.redirect("/patients?error=missing_params");
 }
 
 // Determinar el ID de la cita (Appointment) vinculado
@@ -22,7 +22,7 @@ let finalAptId = appointmentId;
 if (!finalAptId) {
   const apts = await db.execute({
     sql: `SELECT appointmentId FROM Appointments WHERE patientId = ? AND status != 'Cancelada' ORDER BY dateTime DESC LIMIT 1`,
-    args: [patientId]
+    args: [patientId],
   });
   finalAptId = apts.rows[0]?.appointmentId as any;
 }
@@ -38,70 +38,101 @@ let finalPatientId = patientId;
 if (!finalPatientId) {
   const pRes = await db.execute({
     sql: `SELECT patientId FROM Appointments WHERE appointmentId = ?`,
-    args: [finalAptId]
+    args: [finalAptId],
   });
   finalPatientId = pRes.rows[0]?.patientId as any;
 }
 
-if (Astro.request.method === 'POST') {
+if (Astro.request.method === "POST") {
   const data = await Astro.request.formData();
-  const symptoms = data.get('symptoms') as string;
-  const diagnosis = data.get('diagnosis') as string;
-  const date = new Date().toISOString().split('T')[0];
-  
+  const symptoms = data.get("symptoms") as string;
+  const diagnosis = data.get("diagnosis") as string;
+  const date = new Date().toISOString().split("T")[0];
+
   let aptIdForCons = finalAptId;
 
   if (isDirectConsultation) {
-    const currentDateTime = new Date().toISOString().replace('T', ' ').substring(0, 19);
+    const currentDateTime = new Date()
+      .toISOString()
+      .replace("T", " ")
+      .substring(0, 19);
     const aptRes = await db.execute({
-      sql: `INSERT INTO Appointments (patientId, doctorId, dateTime, status, reason) VALUES (?, ?, ?, 'Completada', 'Consulta directa sin cita previa')`,
-      args: [finalPatientId, user?.userId || 0, currentDateTime]
+      sql: `INSERT INTO Appointments (patientId, doctorId, dateTime, status, reason) VALUES (?, ?, ?, 'Confirmada', 'Consulta directa sin cita previa')`,
+      args: [finalPatientId, user?.userId || 0, currentDateTime],
     });
     aptIdForCons = String(aptRes.lastInsertRowid);
   } else {
-    // Marcar cita existente como completada automáticamente
     await db.execute({
-      sql: `UPDATE Appointments SET status = 'Completada' WHERE appointmentId = ?`,
-      args: [aptIdForCons]
+      sql: `UPDATE Appointments SET status = 'Confirmada' WHERE appointmentId = ?`,
+      args: [aptIdForCons],
     });
   }
 
   const result = await db.execute({
     sql: `INSERT INTO Consultations (appointmentId, diagnosis, symptoms, consultationDate) VALUES (?, ?, ?, ?)`,
-    args: [aptIdForCons, diagnosis, symptoms, date]
+    args: [aptIdForCons, diagnosis, symptoms, date],
   });
 
   // Auto-vinculación Doctor -> Paciente
   if (user?.userId && finalPatientId) {
     await db.execute({
       sql: `INSERT OR IGNORE INTO User_Patient (userId, patientId, roleType) VALUES (?, ?, 'Doctor')`,
-      args: [user.userId, finalPatientId]
+      args: [user.userId, finalPatientId],
     });
   }
 
-  return Astro.redirect('/consultations/' + String(result.lastInsertRowid));
+  return Astro.redirect("/consultations/" + String(result.lastInsertRowid));
 }
 
 const patientDataRes = await db.execute({
   sql: `SELECT u.firstName, u.lastName, p.dateOfBirth, p.bloodType, p.allergies 
         FROM Patients p JOIN Users u ON p.patientId = u.userId WHERE p.patientId = ?`,
-  args: [finalPatientId]
+  args: [finalPatientId],
 });
 const pt = patientDataRes.rows[0];
-const age = pt?.dateOfBirth ? Math.abs(new Date(Date.now() - new Date(pt.dateOfBirth as string).getTime()).getUTCFullYear() - 1970) : 'N/A';
+const age = pt?.dateOfBirth
+  ? Math.abs(
+      new Date(
+        Date.now() - new Date(pt.dateOfBirth as string).getTime(),
+      ).getUTCFullYear() - 1970,
+    )
+  : "N/A";
 ---
 
 <Layout title="Iniciar Consulta">
   <div class="mb-8">
-    <div class="flex items-center gap-3 text-sm font-semibold text-slate-500 mb-2">
-      <a href={`/patients/${patientId}`} class="hover:text-teal-600 transition-colors">Regresar al Expediente</a>
-      <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m9 18 6-6-6-6"/></svg>
+    <div
+      class="flex items-center gap-3 text-sm font-semibold text-slate-500 mb-2"
+    >
+      <a
+        href={`/patients/${patientId}`}
+        class="hover:text-teal-600 transition-colors">Regresar al Expediente</a
+      >
+      <svg
+        xmlns="http://www.w3.org/2000/svg"
+        width="16"
+        height="16"
+        viewBox="0 0 24 24"
+        fill="none"
+        stroke="currentColor"
+        stroke-width="2"
+        stroke-linecap="round"
+        stroke-linejoin="round"><path d="m9 18 6-6-6-6"></path></svg
+      >
       <span class="text-teal-700">Consulta nueva</span>
     </div>
     <div class="flex items-center gap-4">
-      <h1 class="text-3xl font-bold text-slate-800 tracking-tight">Registro de Consulta</h1>
-      <span class="bg-teal-100 text-teal-800 text-xs font-bold px-3 py-1 rounded-full border border-teal-200 uppercase">
-        {isDirectConsultation ? 'Consulta Directa' : `Cita #${String(finalAptId).padStart(4, '0')}`}
+      <h1 class="text-3xl font-bold text-slate-800 tracking-tight">
+        Registro de Consulta
+      </h1>
+      <span
+        class="bg-teal-100 text-teal-800 text-xs font-bold px-3 py-1 rounded-full border border-teal-200 uppercase"
+      >
+        {
+          isDirectConsultation
+            ? "Consulta Directa"
+            : `Cita #${String(finalAptId).padStart(4, "0")}`
+        }
       </span>
     </div>
   </div>
@@ -110,17 +141,42 @@ const age = pt?.dateOfBirth ? Math.abs(new Date(Date.now() - new Date(pt.dateOfB
     <div class="xl:col-span-2 space-y-6">
       <form method="POST" id="consultationForm">
         <div class="glass-card rounded-2xl p-6">
-          <h3 class="text-lg font-bold text-slate-800 mb-4 border-b border-white/60 pb-2">Diagnóstico y Notas</h3>
-          
+          <h3
+            class="text-lg font-bold text-slate-800 mb-4 border-b border-white/60 pb-2"
+          >
+            Diagnóstico y Notas
+          </h3>
+
           <div class="space-y-5">
             <div>
-              <label for="symptoms" class="block text-sm font-semibold text-slate-700 mb-1.5 ml-1">Síntomas / Motivo de Consulta</label>
-              <textarea name="symptoms" id="symptoms" required rows="3" class="w-full bg-white/50 border border-slate-200/60 rounded-xl px-4 py-3 text-slate-800 focus:outline-none focus:ring-2 focus:ring-teal-500" placeholder="Descripción de los síntomas presentados por el paciente..."></textarea>
+              <label
+                for="symptoms"
+                class="block text-sm font-semibold text-slate-700 mb-1.5 ml-1"
+                >Síntomas / Motivo de Consulta</label
+              >
+              <textarea
+                name="symptoms"
+                id="symptoms"
+                required
+                rows="3"
+                class="w-full bg-white/50 border border-slate-200/60 rounded-xl px-4 py-3 text-slate-800 focus:outline-none focus:ring-2 focus:ring-teal-500"
+                placeholder="Descripción de los síntomas presentados por el paciente..."
+              ></textarea>
             </div>
-            
+
             <div>
-              <label for="diagnosis" class="block text-sm font-semibold text-slate-700 mb-1.5 ml-1">Diagnóstico Médico</label>
-              <textarea name="diagnosis" id="diagnosis" required rows="3" class="w-full bg-white/50 border border-slate-200/60 rounded-xl px-4 py-3 text-slate-800 focus:outline-none focus:ring-2 focus:ring-teal-500 font-medium" placeholder="Diagnóstico presuntivo o definitivo..."></textarea>
+              <label
+                for="diagnosis"
+                class="block text-sm font-semibold text-slate-700 mb-1.5 ml-1"
+                >Diagnóstico Médico</label
+              >
+              <textarea
+                name="diagnosis"
+                id="diagnosis"
+                required
+                rows="3"
+                class="w-full bg-white/50 border border-slate-200/60 rounded-xl px-4 py-3 text-slate-800 focus:outline-none focus:ring-2 focus:ring-teal-500 font-medium"
+                placeholder="Diagnóstico presuntivo o definitivo..."></textarea>
             </div>
           </div>
         </div>
@@ -128,12 +184,19 @@ const age = pt?.dateOfBirth ? Math.abs(new Date(Date.now() - new Date(pt.dateOfB
 
       <!-- Placeholder para la receta y archivos -->
       <div class="glass-card rounded-2xl p-6 opacity-60">
-        <h3 class="text-lg font-bold text-slate-800">Receta Médica y Archivos</h3>
-        <p class="text-sm text-slate-500">Primero guarde esta consulta para poder adjuntar recetas y documentos.</p>
+        <h3 class="text-lg font-bold text-slate-800">
+          Receta Médica y Archivos
+        </h3>
+        <p class="text-sm text-slate-500">
+          Primero guarde esta consulta para poder adjuntar recetas y documentos.
+        </p>
       </div>
 
       <div class="flex justify-end gap-4 pt-4">
-        <button onclick="document.getElementById('consultationForm').submit()" class="px-8 py-3.5 bg-gradient-to-r from-teal-500 to-emerald-500 text-white font-bold text-lg rounded-xl shadow-lg hover:shadow-xl transition-all active:scale-[0.98] w-full md:w-auto">
+        <button
+          onclick="document.getElementById('consultationForm').submit()"
+          class="px-8 py-3.5 bg-gradient-to-r from-teal-500 to-emerald-500 text-white font-bold text-lg rounded-xl shadow-lg hover:shadow-xl transition-all active:scale-[0.98] w-full md:w-auto"
+        >
           Finalizar y Guardar Consulta
         </button>
       </div>
@@ -141,15 +204,28 @@ const age = pt?.dateOfBirth ? Math.abs(new Date(Date.now() - new Date(pt.dateOfB
 
     <!-- Summary Sidebar -->
     <div class="xl:col-span-1">
-      <div class="glass-strong rounded-2xl p-6 sticky top-24 border border-teal-100/50">
-        <h3 class="font-bold text-slate-800 text-lg border-b border-teal-100 pb-3 mb-4">Resumen del Paciente</h3>
-        
+      <div
+        class="glass-strong rounded-2xl p-6 sticky top-24 border border-teal-100/50"
+      >
+        <h3
+          class="font-bold text-slate-800 text-lg border-b border-teal-100 pb-3 mb-4"
+        >
+          Resumen del Paciente
+        </h3>
+
         <div class="flex items-center gap-4 mb-6">
-          <div class="w-12 h-12 bg-teal-50 text-teal-700 rounded-full flex items-center justify-center font-bold text-lg border border-teal-200 uppercase">
-            {pt?.firstName && (pt.firstName as string)[0]}{pt?.lastName && (pt.lastName as string)[0]}
+          <div
+            class="w-12 h-12 bg-teal-50 text-teal-700 rounded-full flex items-center justify-center font-bold text-lg border border-teal-200 uppercase"
+          >
+            {pt?.firstName && (pt.firstName as string)[0]}{
+              pt?.lastName && (pt.lastName as string)[0]
+            }
           </div>
           <div>
-            <p class="font-bold text-slate-800">{pt?.firstName} {pt?.lastName}</p>
+            <p class="font-bold text-slate-800">
+              {pt?.firstName}
+              {pt?.lastName}
+            </p>
             <p class="text-xs text-slate-500">{age} años • {pt?.bloodType}</p>
           </div>
         </div>
@@ -157,10 +233,16 @@ const age = pt?.dateOfBirth ? Math.abs(new Date(Date.now() - new Date(pt.dateOfB
         <div class="space-y-4 text-sm">
           <div>
             <p class="text-slate-400 font-semibold mb-1">Alergias</p>
-            <p class="font-medium text-slate-800">{pt?.allergies || 'Ninguna conocida'}</p>
+            <p class="font-medium text-slate-800">
+              {pt?.allergies || "Ninguna conocida"}
+            </p>
           </div>
           <div class="pt-4 border-t border-teal-100">
-            <a href={`/patients/${finalPatientId}`} class="text-teal-600 font-semibold text-xs hover:underline inline-block mt-1">Ver expediente completo &rarr;</a>
+            <a
+              href={`/patients/${finalPatientId}`}
+              class="text-teal-600 font-semibold text-xs hover:underline inline-block mt-1"
+              >Ver expediente completo &rarr;</a
+            >
           </div>
         </div>
       </div>

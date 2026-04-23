@@ -45,9 +45,6 @@ const stats = [
 ];
 
 let alerts: any[] = [];
-if (activeAlerts > 0) {
-    alerts.push({ type: 'stock', message: `Sistema reporta ${activeAlerts} alertas globales prioritarias activas hoy.`, link: '/injuries' });
-}
 
 // 4. Últimas citas globales
 const mockRes = await db.execute(`

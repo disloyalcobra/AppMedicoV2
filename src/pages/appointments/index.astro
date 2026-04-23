@@ -44,7 +44,7 @@ let query = `
 `;
 let args: any[] = [startDateStr, endDateStr];
 
-if (user?.roleId === ROLES.DOCTOR) {
+if (user?.roleId === ROLES.DOCTOR || user?.roleId === ROLES.NUTRIOLOGO) {
     query += ` AND a.doctorId = ?`;
     args.push(user.userId);
 }

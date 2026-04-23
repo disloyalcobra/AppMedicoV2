@@ -54,7 +54,7 @@ const stats = [
 // 4. Alerts
 let alerts: any[] = [];
 if (!nextApt) {
-    alerts.push({ type: 'info', message: 'No tienes citas programadas. Te sugerimos agendar un chequeo preventivo anual.', link: '/appointments' });
+    alerts.push({ type: 'note', message: 'No tienes consultas registradas. Agenda una cita o chequeo preventivo.', link: '/appointments' });
 }
 
 // 5. Historial Clínico Resumido
