@@ -1,0 +1,127 @@
+---
+---
+
+<div class="relative bg-white/50 rounded-3xl p-6 md:p-8" id="alertsPdf">
+    <div class="flex justify-between items-center mb-8 border-b border-slate-200 pb-4">
+        <h2 class="text-2xl font-bold text-slate-800 flex items-center gap-2">
+            <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="text-slate-600"><path d="M14 9a2 2 0 0 1-2 2H6l-4 4V4c0-1.1.9-2 2-2h8a2 2 0 0 1 2 2v5Z"/><path d="M18 9h2a2 2 0 0 1 2 2v11l-4-4h-6a2 2 0 0 1-2-2v-1"/></svg>
+            Módulo de Alertas y Notas
+        </h2>
+    </div>
+
+    <div class="grid grid-cols-1 lg:grid-cols-2 gap-8">
+        <div class="glass-card rounded-2xl p-6">
+            <h3 class="font-bold text-slate-700 mb-6">Distribución (Notas vs Alertas)</h3>
+            <div class="relative h-64 w-full flex justify-center">
+                <canvas id="alertsDistributionChart"></canvas>
+            </div>
+        </div>
+
+        <div class="glass-card rounded-2xl p-6">
+            <h3 class="font-bold text-slate-700 mb-6">Top Pacientes (Más Alertas)</h3>
+            <div class="relative w-full">
+                <canvas id="alertsPerPatientChart"></canvas>
+            </div>
+        </div>
+    </div>
+
+    <div class="mt-8 glass-card rounded-2xl p-6">
+        <h3 class="font-bold text-slate-700 mb-6">Ranking de Creadores de Notas</h3>
+        <div class="relative h-64 w-full">
+            <canvas id="notesPerUserChart"></canvas>
+        </div>
+    </div>
+</div>
+
+<script is:inline>
+    let alertsChartInst = null;
+
+    window.addEventListener('reportsDataLoaded', (e) => {
+        const data = e.detail.alerts;
+        
+        // Distribution Chart (Pie)
+        const ctxDist = document.getElementById('alertsDistributionChart').getContext('2d');
+        if (alertsChartInst) alertsChartInst.destroy();
+        
+        // isAlert is 0 or 1
+        let notesCount = 0;
+        let alertsCount = 0;
+        data.distribution.forEach(d => {
+            if (d.isAlert === 1) alertsCount = d.count;
+            else notesCount = d.count;
+        });
+
+        alertsChartInst = new window.Chart(ctxDist, {
+            type: 'pie',
+            data: {
+                labels: ['Notas Normales', 'Alertas de Prioridad'],
+                datasets: [{
+                    data: [notesCount, alertsCount],
+                    backgroundColor: ['#64748b', '#ef4444'],
+                    borderWidth: 0,
+                    hoverOffset: 4
+                }]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                plugins: { legend: { position: 'bottom' } }
+            }
+        });
+
+        // 2. Alertas por Paciente (Bar Horizontal)
+        if (data.alertsPerPatient && data.alertsPerPatient.length > 0) {
+            const ctxPat = document.getElementById('alertsPerPatientChart').getContext('2d');
+            if (window.alertsPatInst) window.alertsPatInst.destroy();
+            window.alertsPatInst = new window.Chart(ctxPat, {
+                type: 'bar',
+                data: {
+                    labels: data.alertsPerPatient.map(p => p.patientName),
+                    datasets: [{
+                        label: 'Alertas',
+                        data: data.alertsPerPatient.map(p => p.count),
+                        backgroundColor: '#ef4444',
+                        borderRadius: 4
+                    }]
+                },
+                options: {
+                    indexAxis: 'y',
+                    responsive: true,
+                    plugins: { legend: { display: false } },
+                    scales: { 
+                        x: { beginAtZero: true, grid: { borderDash: [2, 4] }, ticks: { precision: 0 } },
+                        y: { grid: { display: false } }
+                    }
+                }
+            });
+        }
+
+        // 3. Notas por Usuario (Bar Horizontal)
+        if (data.notesPerUser && data.notesPerUser.length > 0) {
+            const ctxUser = document.getElementById('notesPerUserChart').getContext('2d');
+            if (window.notesUserInst) window.notesUserInst.destroy();
+            window.notesUserInst = new window.Chart(ctxUser, {
+                type: 'bar',
+                data: {
+                    labels: data.notesPerUser.map(u => `${u.authorName} (${u.roleName})`),
+                    datasets: [{
+                        label: 'Notas Creadas',
+                        data: data.notesPerUser.map(u => u.count),
+                        backgroundColor: '#3b82f6',
+                        borderRadius: 4
+                    }]
+                },
+                options: {
+                    indexAxis: 'y',
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    plugins: { legend: { display: false } },
+                    scales: { 
+                        x: { beginAtZero: true, grid: { borderDash: [2, 4] }, ticks: { precision: 0 } },
+                        y: { grid: { display: false } }
+                    }
+                }
+            });
+        }
+    });
+</script>

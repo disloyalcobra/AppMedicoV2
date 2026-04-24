@@ -1,0 +1,171 @@
+---
+---
+
+<div class="relative bg-white/50 rounded-3xl p-6 md:p-8" id="generalVisionPdf">
+    <div class="flex justify-between items-center mb-8 border-b border-slate-200 pb-4">
+        <h2 class="text-2xl font-bold text-slate-800 flex items-center gap-2">
+            <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="text-teal-600"><path d="M3 3v18h18"/><path d="m19 9-5 5-4-4-3 3"/></svg>
+            Visión General
+        </h2>
+    </div>
+
+    <!-- KPIs Principales -->
+    <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
+        <div class="glass-card rounded-2xl p-6 border-l-4 border-l-teal-500 relative overflow-hidden">
+            <div class="absolute top-0 right-0 -mr-4 -mt-4 opacity-10">
+                <svg xmlns="http://www.w3.org/2000/svg" width="100" height="100" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M22 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
+            </div>
+            <p class="text-xs font-bold uppercase tracking-wider text-slate-500 mb-1">Pacientes Atendidos</p>
+            <p class="text-4xl font-extrabold text-slate-800" id="kpiTotalPatients">-</p>
+        </div>
+        <div class="glass-card rounded-2xl p-6 border-l-4 border-l-sky-500 relative overflow-hidden">
+            <div class="absolute top-0 right-0 -mr-4 -mt-4 opacity-10">
+                <svg xmlns="http://www.w3.org/2000/svg" width="100" height="100" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect width="18" height="18" x="3" y="4" rx="2" ry="2"/><line x1="16" x2="16" y1="2" y2="6"/><line x1="8" x2="8" y1="2" y2="6"/><line x1="3" x2="21" y1="10" y2="10"/></svg>
+            </div>
+            <p class="text-xs font-bold uppercase tracking-wider text-slate-500 mb-1">Citas Agendadas</p>
+            <p class="text-4xl font-extrabold text-slate-800" id="kpiTotalAppointments">-</p>
+        </div>
+        <div class="glass-card rounded-2xl p-6 border-l-4 border-l-emerald-500">
+            <p class="text-xs font-bold uppercase tracking-wider text-slate-500 mb-1">Tasa Confirmación</p>
+            <div class="flex items-end gap-2">
+                <p class="text-4xl font-extrabold text-slate-800" id="kpiConfirmationRate">-</p>
+                <span class="text-emerald-500 text-sm font-bold mb-1 flex items-center"><svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m5 12 7-7 7 7"/><path d="M12 19V5"/></svg></span>
+            </div>
+        </div>
+        <div class="glass-card rounded-2xl p-6 border-l-4 border-l-rose-500">
+            <p class="text-xs font-bold uppercase tracking-wider text-slate-500 mb-1">Tasa Cancelación</p>
+            <div class="flex items-end gap-2">
+                <p class="text-4xl font-extrabold text-slate-800" id="kpiCancellationRate">-</p>
+                <span class="text-rose-500 text-sm font-bold mb-1 flex items-center"><svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m19 12-7 7-7-7"/><path d="M12 5v14"/></svg></span>
+            </div>
+        </div>
+    </div>
+
+    <!-- Gráficos Principales -->
+    <div class="grid grid-cols-1 lg:grid-cols-2 gap-8">
+        <div class="glass-card rounded-2xl p-6">
+            <h3 class="font-bold text-slate-700 mb-6">Estado de las Citas</h3>
+            <div class="relative h-64 w-full flex justify-center">
+                <canvas id="appointmentsStatusChart"></canvas>
+            </div>
+        </div>
+
+        <div class="glass-card rounded-2xl p-6">
+            <h3 class="font-bold text-slate-700 mb-6">Carga de Trabajo (Citas x Día)</h3>
+            <div class="relative h-64 w-full">
+                <canvas id="workloadChart"></canvas>
+            </div>
+        </div>
+    </div>
+
+    <!-- Nueve Sección: Usuarios por Rol -->
+    <div class="mt-8 glass-card rounded-2xl p-6">
+        <h3 class="font-bold text-slate-700 mb-6">Usuarios Activos por Rol</h3>
+        <div class="relative h-64 w-full">
+            <canvas id="activeUsersChart"></canvas>
+        </div>
+    </div>
+</div>
+
+<script is:inline>
+    let statusChartInstance = null;
+    let workloadChartInstance = null;
+
+    window.addEventListener('reportsDataLoaded', (e) => {
+        const data = e.detail.general;
+        
+        // 1. Update KPIs
+        document.getElementById('kpiTotalPatients').innerText = data.totalPatients;
+        document.getElementById('kpiTotalAppointments').innerText = data.totalAppointments;
+        
+        const confirmed = data.statusCounts['Confirmada'] || 0;
+        const cancelled = data.statusCounts['Cancelada'] || 0;
+        const total = data.totalAppointments || 1; // avoid /0
+        
+        document.getElementById('kpiConfirmationRate').innerText = Math.round((confirmed / total) * 100) + '%';
+        document.getElementById('kpiCancellationRate').innerText = Math.round((cancelled / total) * 100) + '%';
+
+        // 2. Status Chart (Doughnut)
+        const ctxStatus = document.getElementById('appointmentsStatusChart').getContext('2d');
+        if (statusChartInstance) statusChartInstance.destroy();
+        
+        statusChartInstance = new window.Chart(ctxStatus, {
+            type: 'doughnut',
+            data: {
+                labels: ['Pendiente', 'Confirmada', 'Reagendada', 'Cancelada', 'Rechazada'],
+                datasets: [{
+                    data: [
+                        data.statusCounts['Pendiente'],
+                        data.statusCounts['Confirmada'],
+                        data.statusCounts['Reagendada'],
+                        data.statusCounts['Cancelada'],
+                        data.statusCounts['Rechazada']
+                    ],
+                    backgroundColor: ['#f59e0b', '#10b981', '#3b82f6', '#f43f5e', '#64748b'],
+                    borderWidth: 0,
+                    hoverOffset: 4
+                }]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                plugins: { legend: { position: 'right', labels: { usePointStyle: true, boxWidth: 8 } } },
+                cutout: '70%'
+            }
+        });
+
+        // 3. Workload (Heatmap approx / Bar)
+        const ctxWork = document.getElementById('workloadChart').getContext('2d');
+        if (workloadChartInstance) workloadChartInstance.destroy();
+        
+        const days = ['Domingo', 'Lunes', 'Martes', 'Miércoles', 'Jueves', 'Viernes', 'Sábado'];
+        const workData = new Array(7).fill(0);
+        data.workload.forEach(w => { workData[parseInt(w.dayOfWeek)] = w.count; });
+
+        workloadChartInstance = new window.Chart(ctxWork, {
+            type: 'bar',
+            data: {
+                labels: days,
+                datasets: [{
+                    label: 'Citas',
+                    data: workData,
+                    backgroundColor: '#14b8a6',
+                    borderRadius: 4
+                }]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                plugins: { legend: { display: false } },
+                scales: { 
+                    y: { beginAtZero: true, grid: { borderDash: [2, 4], color: '#f1f5f9' }, ticks: { precision: 0 } },
+                    x: { grid: { display: false } }
+                }
+            }
+        });
+
+        // 4. Usuarios Activos por Rol
+        if (data.activeUsers) {
+            const ctxUsers = document.getElementById('activeUsersChart').getContext('2d');
+            if (window.activeUsersChartInst) window.activeUsersChartInst.destroy();
+            window.activeUsersChartInst = new window.Chart(ctxUsers, {
+                type: 'bar',
+                data: {
+                    labels: data.activeUsers.map(u => u.roleName),
+                    datasets: [{
+                        label: 'Usuarios',
+                        data: data.activeUsers.map(u => u.count),
+                        backgroundColor: '#8b5cf6',
+                        borderRadius: 4
+                    }]
+                },
+                options: {
+                    indexAxis: 'y',
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    plugins: { legend: { display: false } }
+                }
+            });
+        }
+    });
+</script>

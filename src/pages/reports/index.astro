@@ -1,164 +1,182 @@
 ---
 import Layout from '../../layouts/Layout.astro';
+import FiltersBar from '../../components/reports/FiltersBar.astro';
+import GeneralVision from '../../components/reports/GeneralVision.astro';
+import ClinicalModule from '../../components/reports/ClinicalModule.astro';
+import PatientsModule from '../../components/reports/PatientsModule.astro';
+import InjuriesModule from '../../components/reports/InjuriesModule.astro';
+import NutritionModule from '../../components/reports/NutritionModule.astro';
+import AlertsModule from '../../components/reports/AlertsModule.astro';
 import { ROLES, checkRole } from '../../functions/checkRole';
 import { db } from '../../turso';
 
 const user = Astro.locals.user;
-if (!checkRole(user, [ROLES.JEFE_MEDICO, ROLES.ADMINISTRADOR, ROLES.DOCTOR])) {
+if (!user || !checkRole(user, [ROLES.ADMINISTRADOR, ROLES.JEFE_MEDICO, ROLES.DOCTOR, ROLES.NUTRIOLOGO, ROLES.ENTRENADOR])) {
   return Astro.redirect('/403');
 }
 
-const isDoctor = user?.roleId === ROLES.DOCTOR;
+const isAdmin = user.roleId === ROLES.ADMINISTRADOR || user.roleId === ROLES.JEFE_MEDICO;
+const isDoctor = user.roleId === ROLES.DOCTOR;
+const isNutriciologo = user.roleId === ROLES.NUTRIOLOGO;
+const isEntrenador = user.roleId === ROLES.ENTRENADOR;
 
-let cardsData: any = {};
-let injuriesData = [
-  { sport: 'Fútbol', count: 12, color: 'bg-emerald-500' },
-  { sport: 'Básquetbol', count: 8, color: 'bg-amber-500' },
-  { sport: 'Béisbol', count: 5, color: 'bg-rose-500' },
-  { sport: 'Tenis', count: 3, color: 'bg-sky-500' }
-];
-
-let weeklyAppointments = [
-  { day: 'Lun', value: 15 },
-  { day: 'Mar', value: 22 },
-  { day: 'Mié', value: 18 },
-  { day: 'Jue', value: 25 },
-  { day: 'Vie', value: 18 },
-];
-
-if (isDoctor && user?.userId) {
-    // 1. Total pacientes
-    const patRes = await db.execute({
-        sql: `SELECT COUNT(*) as count FROM User_Patient WHERE userId = ? AND roleType = 'Doctor'`,
-        args: [user.userId]
-    });
-    const totalPatients = Number(patRes.rows[0].count);
-
-    // 2. Citas Generadas
-    const aptRes = await db.execute({
-        sql: `SELECT COUNT(*) as count FROM Appointments WHERE doctorId = ?`,
-        args: [user.userId]
-    });
-    const totalAppointments = Number(aptRes.rows[0].count);
-
-    // 3. Total medicamentos recetados por este doctor
-    const medRes = await db.execute({
-        sql: `SELECT COUNT(pi.itemId) as count 
-              FROM PrescriptionItems pi
-              JOIN Prescriptions p ON pi.prescriptionId = p.prescriptionId
-              JOIN Consultations c ON p.consultationId = c.consultationId
-              WHERE c.doctorId = ?`,
-        args: [user.userId]
-    });
-    const totalMeds = Number(medRes.rows[0].count);
-
-    cardsData = {
-        card1: { title: "Pacientes Propios", value: totalPatients, desc: "Bajo tu supervisión directa.", color: "rose", url: "/patients" },
-        card2: { title: "Citas Atendidas", value: totalAppointments, desc: "Histórico total de consultas agendadas.", color: "sky", url: "/appointments" },
-        card3: { title: "Medicinas Recetadas", value: totalMeds, desc: "Artículos médicos prescritos.", color: "amber", url: null }
-    };
-    
-    // Para simplificar, la gráfica semanal del doctor será mockeada pero escalada a valores típicos de 1 doctor
-    weeklyAppointments = [
-      { day: 'Lun', value: 4 },
-      { day: 'Mar', value: 6 },
-      { day: 'Mié', value: 3 },
-      { day: 'Jue', value: 8 },
-      { day: 'Vie', value: 5 },
-    ];
-    
-} else {
-    // MOCK DATA for Admin representing general DB
-    weeklyAppointments = [
-      { day: 'Lun', value: 45 },
-      { day: 'Mar', value: 52 },
-      { day: 'Mié', value: 38 },
-      { day: 'Jue', value: 65 },
-      { day: 'Vie', value: 48 },
-    ];
-    cardsData = {
-        card1: { title: "Stock Crítico", value: "12", desc: "Medicamentos por debajo del nivel de reordenamiento.", color: "rose", url: "/medications" },
-        card2: { title: "Tiempo Promedio Espera", value: "14 min", desc: "Promedio general en salas de espera.", color: "sky", url: null },
-        card3: { title: "Altas Nutricionales", value: "24", desc: "Estudiantes que lograron su meta este semestre.", color: "amber", url: null }
-    };
+// Si es admin, cargar la lista de doctores para el filtro
+let doctors: any[] = [];
+if (isAdmin) {
+    const docRes = await db.execute(`
+        SELECT u.userId, u.firstName, u.lastName, r.roleName
+        FROM Users u
+        JOIN Roles r ON u.roleId = r.roleId
+        WHERE r.roleName IN ('Doctor', 'Nutriólogo', 'Entrenador')
+    `);
+    doctors = docRes.rows;
 }
 
-let maxInjuries = Math.max(...injuriesData.map(d => d.count), 1);
-let maxApt = Math.max(...weeklyAppointments.map(d => d.value), 1);
+// Módulos visibles por rol
+const visibleModules = {
+    general: true,
+    clinical: isDoctor || isAdmin,
+    patients: true,
+    injuries: isEntrenador || isAdmin || isDoctor,
+    nutrition: isNutriciologo || isAdmin,
+    alerts: true
+};
 
+const visibleModulesJSON = JSON.stringify(visibleModules);
 ---
 
-<Layout title="Reportes y Estadísticas">
-  <div class="mb-8">
-    <h1 class="text-3xl font-bold text-slate-800 tracking-tight">{isDoctor ? 'Mi Actividad Profesional' : 'Reportes del Sistema'}</h1>
-    <p class="text-slate-500 mt-1">{isDoctor ? 'Estadísticas de tu desempeño y atenciones como médico.' : 'Estadísticas globales de clínicas, lesiones e inventario'}</p>
+<Layout title="Dashboard de Reportes">
+  <div class="mb-6 flex flex-col md:flex-row justify-between items-start md:items-end gap-4">
+    <div>
+      <h1 class="text-3xl font-extrabold text-slate-800 tracking-tight">Métricas y Reportes</h1>
+      <p class="text-slate-500 mt-1">Análisis visual en tiempo real de la operación clínica.</p>
+    </div>
+    <FiltersBar isAdmin={isAdmin} doctors={doctors} />
   </div>
 
-  <div class="grid grid-cols-1 lg:grid-cols-2 gap-8 mb-8">
-    
-    <!-- Gráfica de Barras Horizontales: Lesiones por Deporte -->
-    <div class="glass-card rounded-2xl p-6">
-      <h3 class="text-xl font-bold text-slate-800 mb-6">Lesiones por Deporte {isDoctor && '(Global)'}</h3>
-      <div class="space-y-5">
-        {injuriesData.map(item => (
-          <div>
-            <div class="flex justify-between text-sm font-semibold mb-1.5">
-              <span class="text-slate-700">{item.sport}</span>
-              <span class="text-slate-500">{item.count} reportes</span>
-            </div>
-            <div class="w-full bg-slate-100 rounded-full h-3 overflow-hidden border border-slate-200 shadow-inner">
-              <div class={`${item.color} h-3 rounded-full animate-fade-in`} style={`width: ${(item.count / maxInjuries) * 100}%`}></div>
-            </div>
-          </div>
-        ))}
-      </div>
-      <div class="mt-6 pt-4 border-t border-slate-100 min-w-full">
-        <a href="/injuries" class="text-teal-600 hover:text-teal-800 font-semibold text-sm flex items-center justify-center gap-2">
-          Ver listado detallado
-          <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14"/><path d="m12 5 7 7-7 7"/></svg>
-        </a>
-      </div>
-    </div>
-
-    <!-- Gráfica de Barras Verticales: Citas de la Semana -->
-    <div class="glass-card rounded-2xl p-6 flex flex-col">
-      <h3 class="text-xl font-bold text-slate-800 mb-6">Tráfico de Consultas Semanal</h3>
-      <div class="flex-1 flex items-end justify-between gap-2 h-48 mt-4">
-        {weeklyAppointments.map(item => (
-          <div class="flex flex-col items-center flex-1 group">
-            <div class="w-full flex justify-center">
-              <div class="w-full max-w-[3rem] bg-gradient-to-t from-teal-500 to-emerald-400 rounded-t-lg shadow group-hover:from-teal-400 group-hover:to-emerald-300 transition-colors relative" style={`height: ${(item.value / maxApt) * 160}px`}>
-                <div class="absolute -top-8 left-1/2 -translate-x-1/2 bg-slate-800 text-white text-xs font-bold py-1 px-2 rounded opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none">
-                  {item.value}
-                </div>
-              </div>
-            </div>
-            <span class="text-xs font-semibold text-slate-500 mt-3 uppercase tracking-wider">{item.day}</span>
-          </div>
-        ))}
-      </div>
-    </div>
+  <!-- Loading State -->
+  <div id="reportsLoader" class="flex flex-col items-center justify-center py-20 animate-pulse">
+      <div class="w-12 h-12 border-4 border-teal-200 border-t-teal-600 rounded-full animate-spin mb-4"></div>
+      <p class="text-slate-500 font-medium">Cargando métricas y construyendo gráficos...</p>
   </div>
 
-  <!-- Tarjetas Informativas -->
-  <div class="grid grid-cols-1 md:grid-cols-3 gap-6">
-    <div class={`glass-card rounded-2xl p-6 border-l-4 border-l-${cardsData.card1.color}-500 group relative`}>
-      <h4 class="text-slate-500 font-semibold mb-1 uppercase tracking-wider text-xs">{cardsData.card1.title}</h4>
-      <p class="text-3xl font-bold text-slate-800 mb-2">{cardsData.card1.value}</p>
-      <p class="text-sm text-slate-500">{cardsData.card1.desc}</p>
-      {cardsData.card1.url && <a href={cardsData.card1.url} class="absolute inset-0 z-10 block"></a>}
-    </div>
-    <div class={`glass-card rounded-2xl p-6 border-l-4 border-l-${cardsData.card2.color}-500 group relative`}>
-      <h4 class="text-slate-500 font-semibold mb-1 uppercase tracking-wider text-xs">{cardsData.card2.title}</h4>
-      <p class="text-3xl font-bold text-slate-800 mb-2" set:html={cardsData.card2.value}></p>
-      <p class="text-sm text-slate-500">{cardsData.card2.desc}</p>
-      {cardsData.card2.url && <a href={cardsData.card2.url} class="absolute inset-0 z-10 block"></a>}
-    </div>
-    <div class={`glass-card rounded-2xl p-6 border-l-4 border-l-${cardsData.card3.color}-500 group relative`}>
-      <h4 class="text-slate-500 font-semibold mb-1 uppercase tracking-wider text-xs">{cardsData.card3.title}</h4>
-      <p class="text-3xl font-bold text-slate-800 mb-2">{cardsData.card3.value}</p>
-      <p class="text-sm text-slate-500">{cardsData.card3.desc}</p>
-      {cardsData.card3.url && <a href={cardsData.card3.url} class="absolute inset-0 z-10 block"></a>}
-    </div>
+  <!-- Contenedor Principal (Oculto mientras carga) -->
+  <div id="reportsContent" class="space-y-8 hidden opacity-0 transition-opacity duration-500">
+
+      <!-- Navegación por Tabs (Lazy loading visual) -->
+      <div id="tabsNav" class="flex overflow-x-auto gap-2 pb-2 scrollbar-hide border-b border-slate-200">
+          <button class="tab-btn active px-4 py-2 rounded-t-lg font-bold text-sm text-teal-700 border-b-2 border-teal-600 bg-teal-50" data-target="tab-general">Visión General</button>
+          <button class="tab-btn px-4 py-2 rounded-t-lg font-semibold text-sm text-slate-500 hover:text-slate-700 hover:bg-slate-50" data-target="tab-clinical">Clínico</button>
+          <button class="tab-btn px-4 py-2 rounded-t-lg font-semibold text-sm text-slate-500 hover:text-slate-700 hover:bg-slate-50" data-target="tab-patients">Pacientes</button>
+          <button class="tab-btn px-4 py-2 rounded-t-lg font-semibold text-sm text-slate-500 hover:text-slate-700 hover:bg-slate-50" data-target="tab-injuries">Lesiones</button>
+          <button class="tab-btn px-4 py-2 rounded-t-lg font-semibold text-sm text-slate-500 hover:text-slate-700 hover:bg-slate-50" data-target="tab-nutrition">Nutrición</button>
+          <button class="tab-btn px-4 py-2 rounded-t-lg font-semibold text-sm text-slate-500 hover:text-slate-700 hover:bg-slate-50" data-target="tab-alerts">Alertas y Notas</button>
+      </div>
+
+      <div id="tab-general" class="tab-content block animate-fade-in"><GeneralVision /></div>
+      <div id="tab-clinical" class="tab-content hidden"><ClinicalModule /></div>
+      <div id="tab-patients" class="tab-content hidden"><PatientsModule /></div>
+      <div id="tab-injuries" class="tab-content hidden"><InjuriesModule /></div>
+      <div id="tab-nutrition" class="tab-content hidden"><NutritionModule /></div>
+      <div id="tab-alerts" class="tab-content hidden"><AlertsModule /></div>
   </div>
+
 </Layout>
+
+<script is:inline define:vars={{ visibleModulesJSON }}>
+  window.visibleModules = JSON.parse(visibleModulesJSON);
+</script>
+
+<script>
+  import Chart from 'chart.js/auto';
+
+  // Exponer Chart globalmente para los modulos
+  (window as any).Chart = Chart;
+
+  document.addEventListener('DOMContentLoaded', () => {
+
+    // Ocultar tabs según el rol
+    const tabsNav = document.getElementById('tabsNav');
+    const vModules = (window as any).visibleModules || {};
+    if (tabsNav) {
+      const tabs = tabsNav.querySelectorAll('.tab-btn');
+      tabs.forEach(tab => {
+        const target = tab.getAttribute('data-target')?.replace('tab-', '');
+        if (target && !vModules[target]) {
+          tab.remove();
+        }
+      });
+    }
+
+    // Tab Navigation Logic
+    const tabs = document.querySelectorAll('.tab-btn');
+    const contents = document.querySelectorAll('.tab-content');
+    
+    tabs.forEach(tab => {
+        tab.addEventListener('click', () => {
+            tabs.forEach(t => {
+                t.classList.remove('active', 'text-teal-700', 'border-b-2', 'border-teal-600', 'bg-teal-50');
+                t.classList.add('text-slate-500');
+            });
+            contents.forEach(c => c.classList.add('hidden', 'animate-fade-in'));
+            
+            tab.classList.remove('text-slate-500');
+            tab.classList.add('active', 'text-teal-700', 'border-b-2', 'border-teal-600', 'bg-teal-50');
+            
+            const targetId = tab.getAttribute('data-target');
+            document.getElementById(targetId || '')?.classList.remove('hidden');
+        });
+    });
+
+    // Core Fetch Logic
+    const filterRange = document.getElementById('filterRange') as HTMLSelectElement;
+    const filterDoctor = document.getElementById('filterDoctor') as HTMLSelectElement;
+    let currentData: any = null;
+
+    const fetchReports = async () => {
+        const loader = document.getElementById('reportsLoader');
+        const content = document.getElementById('reportsContent');
+        if(!loader || !content) return;
+        
+        content.classList.add('opacity-0');
+        setTimeout(() => content.classList.add('hidden'), 300);
+        loader.classList.remove('hidden');
+
+        try {
+            const range = filterRange?.value || 'month';
+            const doctorId = filterDoctor?.value || '';
+            
+            const response = await fetch(`/api/reports?range=${range}&doctorId=${doctorId}`);
+            
+            if (!response.ok) {
+                throw new Error("Error en la respuesta del servidor");
+            }
+            
+            currentData = await response.json();
+            
+            // Disparar evento global para que los componentes dibujen sus gráficos
+            const event = new CustomEvent('reportsDataLoaded', { detail: currentData });
+            window.dispatchEvent(event);
+            
+            setTimeout(() => {
+                loader.classList.add('hidden');
+                content.classList.remove('hidden');
+                // Trigger reflow
+                void content.offsetWidth;
+                content.classList.remove('opacity-0');
+            }, 100);
+        } catch (error) {
+            console.error('Error fetching reports:', error);
+            loader.innerHTML = '<p class="text-rose-500 font-bold">Error al cargar datos. Intente nuevamente.</p>';
+        }
+    };
+
+    filterRange?.addEventListener('change', fetchReports);
+    filterDoctor?.addEventListener('change', fetchReports);
+
+    // Initial Fetch
+    fetchReports();
+
+
+  });
+</script>

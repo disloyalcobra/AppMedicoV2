@@ -1,0 +1,179 @@
+---
+---
+
+<div class="relative bg-white/50 rounded-3xl p-6 md:p-8" id="injuriesPdf">
+    <div class="flex justify-between items-center mb-8 border-b border-slate-200 pb-4">
+        <h2 class="text-2xl font-bold text-slate-800 flex items-center gap-2">
+            <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="text-rose-600"><path d="M12 2v20"/><path d="m14.5 4-5 5"/><path d="m14.5 9.5-5 5"/><path d="m14.5 15-5 5"/></svg>
+            Módulo de Lesiones
+        </h2>
+    </div>
+
+    <div class="grid grid-cols-1 lg:grid-cols-2 gap-8 mb-8">
+        <div class="glass-card rounded-2xl p-6">
+            <h3 class="font-bold text-slate-700 mb-6">Tipos de Lesiones</h3>
+            <div class="relative h-64 w-full">
+                <canvas id="injuriesTypeChart"></canvas>
+            </div>
+        </div>
+
+        <div class="glass-card rounded-2xl p-6">
+            <h3 class="font-bold text-slate-700 mb-6">Zonas del Cuerpo Afectadas</h3>
+            <div class="relative h-64 w-full">
+                <canvas id="injuriesZoneChart"></canvas>
+            </div>
+        </div>
+    </div>
+
+    <div class="grid grid-cols-1 lg:grid-cols-2 gap-8">
+        <div class="glass-card rounded-2xl p-6">
+            <h3 class="font-bold text-slate-700 mb-6">Severidad de Lesiones</h3>
+            <div class="relative h-64 w-full">
+                <canvas id="injuriesSeverityChart"></canvas>
+            </div>
+        </div>
+
+        <div class="glass-card rounded-2xl p-6">
+            <h3 class="font-bold text-slate-700 mb-6">Promedio de Recuperación (Días)</h3>
+            <div class="relative h-64 w-full">
+                <canvas id="recoveryTrendChart"></canvas>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script is:inline>
+    let injTypeChartInst = null;
+    let injZoneChartInst = null;
+    let injSevChartInst = null;
+
+    window.addEventListener('reportsDataLoaded', (e) => {
+        const data = e.detail.injuries;
+        
+        // 1. Types Chart (Bar)
+        const ctxType = document.getElementById('injuriesTypeChart').getContext('2d');
+        if (injTypeChartInst) injTypeChartInst.destroy();
+        injTypeChartInst = new window.Chart(ctxType, {
+            type: 'bar',
+            data: {
+                labels: data.types.map(t => t.injuryType),
+                datasets: [{
+                    label: 'Lesiones',
+                    data: data.types.map(t => t.count),
+                    backgroundColor: '#f43f5e',
+                    borderRadius: 4
+                }]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                plugins: { legend: { display: false } },
+                scales: { 
+                    y: { beginAtZero: true, grid: { borderDash: [2, 4], color: '#f1f5f9' }, ticks: { precision: 0 } },
+                    x: { grid: { display: false } }
+                }
+            }
+        });
+
+        // 2. Zones Chart (Horizontal Bar)
+        const ctxZone = document.getElementById('injuriesZoneChart').getContext('2d');
+        if (injZoneChartInst) injZoneChartInst.destroy();
+        injZoneChartInst = new window.Chart(ctxZone, {
+            type: 'bar',
+            data: {
+                labels: data.zones.map(z => z.bodyZone),
+                datasets: [{
+                    label: 'Ocurrencias',
+                    data: data.zones.map(z => z.count),
+                    backgroundColor: '#f97316',
+                    borderRadius: 4
+                }]
+            },
+            options: {
+                indexAxis: 'y',
+                responsive: true,
+                maintainAspectRatio: false,
+                plugins: { legend: { display: false } },
+                scales: { 
+                    x: { beginAtZero: true, grid: { borderDash: [2, 4], color: '#f1f5f9' }, ticks: { precision: 0 } },
+                    y: { grid: { display: false } }
+                }
+            }
+        });
+
+        // 3. Severity Chart (Stacked Bar / Doughnut fallback)
+        // Convert array to object
+        const sevMap = { 'Leve': 0, 'Moderada': 0, 'Grave': 0 };
+        data.severities.forEach(s => { sevMap[s.severity] = s.count; });
+        
+        const ctxSev = document.getElementById('injuriesSeverityChart').getContext('2d');
+        if (injSevChartInst) injSevChartInst.destroy();
+        injSevChartInst = new window.Chart(ctxSev, {
+            type: 'bar',
+            data: {
+                labels: ['Severidad Global'],
+                datasets: [
+                    { label: 'Leve', data: [sevMap['Leve']], backgroundColor: '#10b981', barPercentage: 0.5 },
+                    { label: 'Moderada', data: [sevMap['Moderada']], backgroundColor: '#f59e0b', barPercentage: 0.5 },
+                    { label: 'Grave', data: [sevMap['Grave']], backgroundColor: '#e11d48', barPercentage: 0.5 }
+                ]
+            },
+            options: {
+                indexAxis: 'x',
+                responsive: true,
+                maintainAspectRatio: false,
+                scales: {
+                    x: { stacked: true },
+                    y: { stacked: true, grid: { borderDash: [2, 4], color: '#f1f5f9' }, ticks: { precision: 0 } }
+                },
+                plugins: {
+                    legend: { position: 'bottom' }
+                }
+            }
+        });
+
+        // 4. Tiempo Promedio de Recuperación
+        if (data.recoveryTimes && data.recoveryTimes.length > 0) {
+            const ctxRec = document.getElementById('recoveryTrendChart').getContext('2d');
+            if (window.recoveryTrendInst) window.recoveryTrendInst.destroy();
+            
+            const groupedByMonth = {};
+            data.recoveryTimes.forEach(r => {
+                if(!r.injuryDate || !r.estimatedRecovery) return;
+                const date1 = new Date(r.injuryDate);
+                const date2 = new Date(r.estimatedRecovery);
+                const diffTime = Math.abs(date2 - date1);
+                const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24)); 
+                
+                const month = r.injuryDate.substring(0, 7);
+                if(!groupedByMonth[month]) groupedByMonth[month] = { days: 0, count: 0 };
+                groupedByMonth[month].days += diffDays;
+                groupedByMonth[month].count += 1;
+            });
+
+            const labels = Object.keys(groupedByMonth).sort();
+            const avgs = labels.map(l => (groupedByMonth[l].days / groupedByMonth[l].count).toFixed(0));
+
+            window.recoveryTrendInst = new window.Chart(ctxRec, {
+                type: 'line',
+                data: {
+                    labels: labels,
+                    datasets: [{
+                        label: 'Días Estimados',
+                        data: avgs,
+                        borderColor: '#0ea5e9',
+                        backgroundColor: 'rgba(14, 165, 233, 0.1)',
+                        fill: true,
+                        tension: 0.4
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    plugins: { legend: { display: false } },
+                    scales: { y: { beginAtZero: true } }
+                }
+            });
+        }
+    });
+</script>

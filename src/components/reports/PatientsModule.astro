@@ -1,0 +1,120 @@
+---
+---
+
+<div class="relative bg-white/50 rounded-3xl p-6 md:p-8" id="patientsPdf">
+    <div class="flex justify-between items-center mb-8 border-b border-slate-200 pb-4">
+        <h2 class="text-2xl font-bold text-slate-800 flex items-center gap-2">
+            <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="text-indigo-600"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M22 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
+            Demografía y Pacientes
+        </h2>
+    </div>
+
+    <div class="grid grid-cols-1 lg:grid-cols-2 gap-8">
+        <div class="glass-card rounded-2xl p-6">
+            <h3 class="font-bold text-slate-700 mb-6">Distribución por Edad y Género</h3>
+            <div class="relative h-72 w-full">
+                <canvas id="ageGenderChart"></canvas>
+            </div>
+        </div>
+
+        <div class="glass-card rounded-2xl p-6 flex flex-col justify-center items-center text-center border-l-4 border-l-purple-500">
+            <svg xmlns="http://www.w3.org/2000/svg" width="64" height="64" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" class="text-purple-200 mb-4"><path d="m10.5 20.5 1-1-1.5-1.5 1-1 1.5 1.5 1-1-1.5-1.5 1-1 1.5 1.5 1-1-1.5-1.5 1-1 1.5 1.5 1-1-1.5-1.5 1-1"/><path d="m15.5 10.5 1-1-1.5-1.5 1-1 1.5 1.5 1-1-1.5-1.5 1-1 1.5 1.5 1-1-1.5-1.5 1-1 1.5 1.5 1-1-1.5-1.5 1-1"/><path d="M5 21a2 2 0 1 0 0-4 2 2 0 0 0 0 4Z"/><path d="m10.2 16.8 8.6-8.6a2 2 0 0 0 0-2.8l-1.4-1.4a2 2 0 0 0-2.8 0l-8.6 8.6c-.3.3-.4.6-.5 1l-.9 3.5c-.1.5.4 1 .9.9l3.5-.9c.4 0 .7-.2 1-.5Z"/></svg>
+            <h3 class="font-bold text-slate-700 mb-2">Total de Alergias Registradas</h3>
+            <p class="text-5xl font-extrabold text-slate-800" id="totalAllergies">-</p>
+            <p class="text-slate-500 mt-2 text-sm">Pacientes han reportado tener alergias en su expediente.</p>
+        </div>
+    </div>
+
+    <div class="mt-8 glass-card rounded-2xl p-6">
+        <h3 class="font-bold text-slate-700 mb-6">Evolución Promedio de Peso (Kg)</h3>
+        <div class="relative h-64 w-full">
+            <canvas id="weightEvolChart"></canvas>
+        </div>
+    </div>
+</div>
+
+<script is:inline>
+    let ageChartInstance = null;
+
+    window.addEventListener('reportsDataLoaded', (e) => {
+        const data = e.detail.patients;
+        
+        document.getElementById('totalAllergies').innerText = data.allergiesCount;
+
+        // Age/Gender Chart (Grouped Bar)
+        const ctxAge = document.getElementById('ageGenderChart').getContext('2d');
+        if (ageChartInstance) ageChartInstance.destroy();
+        
+        const labels = Object.keys(data.ages); // '0-18', '19-25', etc.
+        const maleData = labels.map(l => data.ages[l].M);
+        const femaleData = labels.map(l => data.ages[l].F);
+        
+        ageChartInstance = new window.Chart(ctxAge, {
+            type: 'bar',
+            data: {
+                labels: labels,
+                datasets: [
+                    {
+                        label: 'Masculino',
+                        data: maleData,
+                        backgroundColor: '#3b82f6',
+                        borderRadius: 4
+                    },
+                    {
+                        label: 'Femenino',
+                        data: femaleData,
+                        backgroundColor: '#ec4899',
+                        borderRadius: 4
+                    }
+                ]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                plugins: { legend: { position: 'top' } },
+                scales: { 
+                    y: { beginAtZero: true, grid: { borderDash: [2, 4], color: '#f1f5f9' }, ticks: { precision: 0 } },
+                    x: { grid: { display: false } }
+                }
+            }
+        });
+
+        // Evolucion Peso Chart (Line)
+        if (data.weightEvolution && data.weightEvolution.length > 0) {
+            const ctxWeight = document.getElementById('weightEvolChart').getContext('2d');
+            if (window.weightChartInst) window.weightChartInst.destroy();
+            
+            const groupedByMonth = {};
+            data.weightEvolution.forEach(w => {
+                if(!w.followUpDate || !w.currentWeight) return;
+                const month = w.followUpDate.substring(0, 7);
+                if(!groupedByMonth[month]) groupedByMonth[month] = { weight: 0, count: 0 };
+                groupedByMonth[month].weight += w.currentWeight;
+                groupedByMonth[month].count += 1;
+            });
+
+            const labels = Object.keys(groupedByMonth).sort();
+            const weights = labels.map(l => (groupedByMonth[l].weight / groupedByMonth[l].count).toFixed(2));
+
+            window.weightChartInst = new window.Chart(ctxWeight, {
+                type: 'line',
+                data: {
+                    labels: labels,
+                    datasets: [{
+                        label: 'Peso Promedio Global',
+                        data: weights,
+                        borderColor: '#8b5cf6',
+                        backgroundColor: 'rgba(139, 92, 246, 0.1)',
+                        fill: true,
+                        tension: 0.4
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    plugins: { legend: { display: false } }
+                }
+            });
+        }
+    });
+</script>

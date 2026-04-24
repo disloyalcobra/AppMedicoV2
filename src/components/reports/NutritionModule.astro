@@ -1,0 +1,180 @@
+---
+---
+
+<div class="relative bg-white/50 rounded-3xl p-6 md:p-8" id="nutritionPdf">
+    <div class="flex justify-between items-center mb-8 border-b border-slate-200 pb-4">
+        <h2 class="text-2xl font-bold text-slate-800 flex items-center gap-2">
+            <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="text-amber-500"><path d="M12 2v20"/><path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/></svg>
+            Módulo de Nutrición
+        </h2>
+    </div>
+
+    <div class="grid grid-cols-1 md:grid-cols-2 gap-8">
+        <div class="glass-card rounded-2xl p-6 flex flex-col justify-center items-center text-center border-l-4 border-l-amber-500">
+            <svg xmlns="http://www.w3.org/2000/svg" width="64" height="64" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" class="text-amber-200 mb-4"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>
+            <h3 class="font-bold text-slate-700 mb-2">Promedio de Cumplimiento</h3>
+            <div class="flex items-end gap-1">
+                <p class="text-6xl font-extrabold text-slate-800" id="avgCompliance">-</p>
+                <span class="text-xl font-bold text-slate-500 mb-2">%</span>
+            </div>
+            <p class="text-slate-500 mt-2 text-sm">Adherencia promedio a los planes nutricionales en seguimientos.</p>
+        </div>
+
+        <div class="glass-card rounded-2xl p-6 relative overflow-hidden">
+             <!-- Decoración -->
+            <div class="absolute -right-4 -bottom-4 opacity-5 pointer-events-none">
+                 <svg xmlns="http://www.w3.org/2000/svg" width="150" height="150" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 12h-4l-3 9L9 3l-3 9H2"/></svg>
+            </div>
+            <h3 class="font-bold text-slate-700 mb-4">Métricas Nutricionales</h3>
+            <ul class="space-y-4">
+                <li class="flex items-center justify-between p-3 bg-white/60 rounded-xl border border-slate-100">
+                    <span class="text-sm font-semibold text-slate-600">Pacientes Activos</span>
+                    <span class="text-lg font-bold text-slate-800" id="nutActivePatients">Calculando...</span>
+                </li>
+                <li class="flex items-center justify-between p-3 bg-amber-50/60 rounded-xl border border-amber-100">
+                    <span class="text-sm font-semibold text-amber-800">Objetivos Alcanzados</span>
+                    <span class="text-lg font-bold text-amber-600">Próximamente</span>
+                </li>
+    <div class="grid grid-cols-1 md:grid-cols-2 gap-8 mb-8">
+        <div class="glass-card rounded-2xl p-6">
+            <h3 class="font-bold text-slate-700 mb-6">Diagnósticos Frecuentes</h3>
+            <div class="relative h-64 w-full">
+                <canvas id="nutDiagnosesChart"></canvas>
+            </div>
+        </div>
+
+        <div class="glass-card rounded-2xl p-6">
+            <h3 class="font-bold text-slate-700 mb-6">Altas por Cumplimiento vs Otras Razones</h3>
+            <div class="relative h-64 w-full flex justify-center">
+                <canvas id="dischargesChart"></canvas>
+            </div>
+        </div>
+    </div>
+
+    <div class="glass-card rounded-2xl p-6">
+        <h3 class="font-bold text-slate-700 mb-6">Evolución Promedio del BMI y Peso</h3>
+        <div class="relative h-64 w-full">
+            <canvas id="nutEvolChart"></canvas>
+        </div>
+    </div>
+</div>
+
+<script is:inline>
+    window.addEventListener('reportsDataLoaded', (e) => {
+        const data = e.detail;
+        const nutData = data.nutrition;
+        
+        const compliance = nutData.compliance || 0;
+        document.getElementById('avgCompliance').innerText = Math.round(compliance);
+        document.getElementById('nutActivePatients').innerText = data.general.totalPatients;
+
+        // 1. Diagnoses Chart (Bar)
+        if (nutData.diagnoses && nutData.diagnoses.length > 0) {
+            const ctxDiag = document.getElementById('nutDiagnosesChart').getContext('2d');
+            if (window.nutDiagInst) window.nutDiagInst.destroy();
+            window.nutDiagInst = new window.Chart(ctxDiag, {
+                type: 'bar',
+                data: {
+                    labels: nutData.diagnoses.map(d => d.nutritionalDiagnosis),
+                    datasets: [{
+                        label: 'Ocurrencias',
+                        data: nutData.diagnoses.map(d => d.count),
+                        backgroundColor: '#f59e0b',
+                        borderRadius: 4
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    plugins: { legend: { display: false } },
+                    scales: { 
+                        y: { beginAtZero: true, grid: { borderDash: [2, 4] }, ticks: { precision: 0 } },
+                        x: { grid: { display: false } }
+                    }
+                }
+            });
+        }
+
+        // 2. Discharges (Pie)
+        if (nutData.discharges && nutData.discharges.length > 0) {
+            const ctxDisc = document.getElementById('dischargesChart').getContext('2d');
+            if (window.nutDiscInst) window.nutDiscInst.destroy();
+            
+            let fulfilled = 0;
+            let other = 0;
+            nutData.discharges.forEach(d => {
+                if(d.goalReached === 1) fulfilled += d.count;
+                else other += d.count;
+            });
+
+            window.nutDiscInst = new window.Chart(ctxDisc, {
+                type: 'doughnut',
+                data: {
+                    labels: ['Objetivo Cumplido', 'Otras Razones'],
+                    datasets: [{
+                        data: [fulfilled, other],
+                        backgroundColor: ['#10b981', '#cbd5e1'],
+                        borderWidth: 0
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    plugins: { legend: { position: 'bottom' } }
+                }
+            });
+        }
+
+        // 3. BMI / Weight Evolution
+        if (data.patients && data.patients.weightEvolution && data.patients.weightEvolution.length > 0) {
+            const ctxEvol = document.getElementById('nutEvolChart').getContext('2d');
+            if (window.nutEvolInst) window.nutEvolInst.destroy();
+            
+            const groupedByMonth = {};
+            data.patients.weightEvolution.forEach(w => {
+                if(!w.followUpDate || !w.currentWeight || !w.currentBmi) return;
+                const month = w.followUpDate.substring(0, 7);
+                if(!groupedByMonth[month]) groupedByMonth[month] = { weight: 0, bmi: 0, count: 0 };
+                groupedByMonth[month].weight += w.currentWeight;
+                groupedByMonth[month].bmi += w.currentBmi;
+                groupedByMonth[month].count += 1;
+            });
+
+            const labels = Object.keys(groupedByMonth).sort();
+            const weights = labels.map(l => (groupedByMonth[l].weight / groupedByMonth[l].count).toFixed(2));
+            const bmis = labels.map(l => (groupedByMonth[l].bmi / groupedByMonth[l].count).toFixed(2));
+
+            window.nutEvolInst = new window.Chart(ctxEvol, {
+                type: 'line',
+                data: {
+                    labels: labels,
+                    datasets: [
+                        {
+                            label: 'Peso Promedio (Kg)',
+                            data: weights,
+                            borderColor: '#f59e0b',
+                            backgroundColor: '#f59e0b',
+                            yAxisID: 'y'
+                        },
+                        {
+                            label: 'BMI Promedio',
+                            data: bmis,
+                            borderColor: '#10b981',
+                            backgroundColor: '#10b981',
+                            yAxisID: 'y1'
+                        }
+                    ]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    interaction: { mode: 'index', intersect: false },
+                    scales: {
+                        y: { type: 'linear', display: true, position: 'left' },
+                        y1: { type: 'linear', display: true, position: 'right', grid: { drawOnChartArea: false } }
+                    }
+                }
+            });
+        }
+    });
+</script>

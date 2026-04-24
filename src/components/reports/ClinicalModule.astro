@@ -1,0 +1,183 @@
+---
+---
+
+<div class="relative bg-white/50 rounded-3xl p-6 md:p-8" id="clinicalPdf">
+    <div class="flex justify-between items-center mb-8 border-b border-slate-200 pb-4">
+        <h2 class="text-2xl font-bold text-slate-800 flex items-center gap-2">
+            <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="text-sky-600"><path d="M22 12h-4l-3 9L9 3l-3 9H2"/></svg>
+            Módulo Clínico
+        </h2>
+    </div>
+
+    <div class="grid grid-cols-1 lg:grid-cols-2 gap-8">
+        <div class="glass-card rounded-2xl p-6">
+            <h3 class="font-bold text-slate-700 mb-6">Diagnósticos Frecuentes (Top 10)</h3>
+            <div class="relative h-72 w-full">
+                <canvas id="diagnosesChart"></canvas>
+            </div>
+        </div>
+
+        <div class="glass-card rounded-2xl p-6">
+            <h3 class="font-bold text-slate-700 mb-6">Medicamentos más Recetados</h3>
+            <div class="relative h-72 w-full">
+                <canvas id="medicationsChart"></canvas>
+            </div>
+        </div>
+    </div>
+
+    <div class="grid grid-cols-1 lg:grid-cols-2 gap-8 mt-8">
+        <div class="glass-card rounded-2xl p-6">
+            <h3 class="font-bold text-slate-700 mb-6">Síntomas más Reportados</h3>
+            <div class="relative h-64 w-full">
+                <canvas id="symptomsChart"></canvas>
+            </div>
+        </div>
+
+        <div class="glass-card rounded-2xl p-6">
+            <h3 class="font-bold text-slate-700 mb-6">Duración Promedio de Tratamientos (Días)</h3>
+            <div class="relative h-64 w-full">
+                <canvas id="durationTrendChart"></canvas>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script is:inline>
+    let diagChartInstance = null;
+    let medsChartInstance = null;
+    let sympChartInstance = null;
+
+    window.addEventListener('reportsDataLoaded', (e) => {
+        const data = e.detail.clinical;
+        
+        // 1. Diagnoses Chart (Horizontal Bar)
+        const ctxDiag = document.getElementById('diagnosesChart').getContext('2d');
+        if (diagChartInstance) diagChartInstance.destroy();
+        
+        diagChartInstance = new window.Chart(ctxDiag, {
+            type: 'bar',
+            data: {
+                labels: data.diagnoses.map(d => d.diagnosis.substring(0, 20) + (d.diagnosis.length > 20 ? '...' : '')),
+                datasets: [{
+                    label: 'Frecuencia',
+                    data: data.diagnoses.map(d => d.count),
+                    backgroundColor: '#0ea5e9',
+                    borderRadius: 4
+                }]
+            },
+            options: {
+                indexAxis: 'y',
+                responsive: true,
+                maintainAspectRatio: false,
+                plugins: { legend: { display: false } },
+                scales: { 
+                    x: { beginAtZero: true, grid: { borderDash: [2, 4], color: '#f1f5f9' }, ticks: { precision: 0 } },
+                    y: { grid: { display: false } }
+                }
+            }
+        });
+
+        // 2. Medications Chart (Bar)
+        const ctxMeds = document.getElementById('medicationsChart').getContext('2d');
+        if (medsChartInstance) medsChartInstance.destroy();
+        
+        medsChartInstance = new window.Chart(ctxMeds, {
+            type: 'bar',
+            data: {
+                labels: data.medications.map(m => m.brandName),
+                datasets: [{
+                    label: 'Veces Recetado',
+                    data: data.medications.map(m => m.count),
+                    backgroundColor: '#6366f1',
+                    borderRadius: 4,
+                    barPercentage: 0.6
+                }]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                plugins: { legend: { display: false } },
+                scales: { 
+                    y: { beginAtZero: true, grid: { borderDash: [2, 4], color: '#f1f5f9' }, ticks: { precision: 0 } },
+                    x: { grid: { display: false } }
+                }
+            }
+        });
+
+        // 3. Symptoms Chart (Bar)
+        const ctxSymp = document.getElementById('symptomsChart').getContext('2d');
+        if (sympChartInstance) sympChartInstance.destroy();
+        
+        sympChartInstance = new window.Chart(ctxSymp, {
+            type: 'bar',
+            data: {
+                labels: data.symptoms.map(s => s.name),
+                datasets: [{
+                    label: 'Frecuencia en Consultas',
+                    data: data.symptoms.map(s => s.count),
+                    backgroundColor: '#14b8a6',
+                    borderRadius: 4
+                }]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                plugins: { legend: { display: false } },
+                scales: { 
+                    y: { beginAtZero: true, grid: { borderDash: [2, 4], color: '#f1f5f9' }, ticks: { precision: 0 } },
+                    x: { grid: { display: false } }
+                }
+            }
+        });
+
+        // 4. Duración de Tratamientos (Trend Line)
+        if (data.treatments && data.treatments.length > 0) {
+            const ctxTrend = document.getElementById('durationTrendChart').getContext('2d');
+            if (window.trendChartInst) window.trendChartInst.destroy();
+
+            // Parser manual
+            const parseDuration = (str) => {
+                if(!str) return 0;
+                const s = String(str).toLowerCase();
+                const num = parseInt(s.replace(/[^0-9]/g, '')) || 0;
+                if(s.includes('mes')) return num * 30;
+                if(s.includes('semana')) return num * 7;
+                if(s.includes('año')) return num * 365;
+                return num || 1; // Default 1 dia
+            };
+
+            const groupedByMonth = {};
+            data.treatments.forEach(t => {
+                if (!t.consultationDate) return;
+                const month = t.consultationDate.substring(0, 7); // YYYY-MM
+                if (!groupedByMonth[month]) groupedByMonth[month] = { totalDays: 0, count: 0 };
+                groupedByMonth[month].totalDays += parseDuration(t.duration);
+                groupedByMonth[month].count += 1;
+            });
+
+            const labels = Object.keys(groupedByMonth).sort();
+            const avgs = labels.map(l => groupedByMonth[l].count ? Math.round(groupedByMonth[l].totalDays / groupedByMonth[l].count) : 0);
+
+            window.trendChartInst = new window.Chart(ctxTrend, {
+                type: 'line',
+                data: {
+                    labels: labels,
+                    datasets: [{
+                        label: 'Días promedio',
+                        data: avgs,
+                        borderColor: '#f43f5e',
+                        backgroundColor: 'rgba(244, 63, 94, 0.1)',
+                        fill: true,
+                        tension: 0.4
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    plugins: { legend: { display: false } },
+                    scales: { y: { beginAtZero: true } }
+                }
+            });
+        }
+    });
+</script>
