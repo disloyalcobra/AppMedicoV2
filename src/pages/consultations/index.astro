@@ -27,7 +27,7 @@ let sqlQuery = `
   JOIN Appointments a ON c.appointmentId = a.appointmentId
   JOIN Patients p ON a.patientId = p.patientId
   JOIN Users u ON p.patientId = u.userId
-  JOIN Users ud ON a.doctorId = ud.userId
+  JOIN Users ud ON a.specialistId = ud.userId
 `;
 let args: any[] = [];
 

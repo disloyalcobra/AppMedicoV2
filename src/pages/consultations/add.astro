@@ -57,8 +57,8 @@ if (Astro.request.method === "POST") {
       .replace("T", " ")
       .substring(0, 19);
     const aptRes = await db.execute({
-      sql: `INSERT INTO Appointments (patientId, doctorId, dateTime, status, reason) VALUES (?, ?, ?, 'Confirmada', 'Consulta directa sin cita previa')`,
-      args: [finalPatientId, user?.userId || 0, currentDateTime],
+      sql: `INSERT INTO Appointments (patientId, specialistId, createdBy, dateTime, status, reason) VALUES (?, ?, ?, ?, 'Confirmada', 'Consulta directa sin cita previa')`,
+      args: [finalPatientId, user?.userId || 0, user?.userId || 0, currentDateTime],
     });
     aptIdForCons = String(aptRes.lastInsertRowid);
   } else {

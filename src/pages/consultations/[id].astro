@@ -26,7 +26,7 @@ const consRes = await db.execute({
         JOIN Appointments a ON c.appointmentId = a.appointmentId
         JOIN Patients p ON a.patientId = p.patientId
         JOIN Users u ON p.patientId = u.userId
-        JOIN Users ud ON a.doctorId = ud.userId
+        JOIN Users ud ON a.specialistId = ud.userId
         WHERE c.consultationId = ?`,
   args: [String(id)]
 });
@@ -393,35 +393,38 @@ const age = cons.dateOfBirth ? Math.abs(new Date(Date.now() - new Date(cons.date
       </div>
     </div>
   </div>
-</Layout>
+        <div 
+          id="pdfData" 
+          data-cons={JSON.stringify(cons)} 
+          data-pres={JSON.stringify(prescriptions)} 
+          data-id={id}
+          class="hidden"
+        ></div>
 
-<div 
-  id="pdfData" 
-  data-cons={JSON.stringify(cons)} 
-  data-pres={JSON.stringify(prescriptions)} 
-  data-id={id}
-  class="hidden"
-></div>
+        <script is:inline>
+          function setupToggles() {
+            const btnPrescription = document.getElementById('togglePrescriptionForm');
+            const btnCancelPrescription = document.getElementById('cancelPrescription');
+            const formPrescription = document.getElementById('prescriptionForm');
 
-<script>
-  import { jsPDF } from 'jspdf';
+            btnPrescription?.addEventListener('click', () => formPrescription?.classList.toggle('hidden'));
+            btnCancelPrescription?.addEventListener('click', () => formPrescription?.classList.add('hidden'));
 
-  // Toggle Forms
-  const btnPrescription = document.getElementById('togglePrescriptionForm');
-  const btnCancelPrescription = document.getElementById('cancelPrescription');
-  const formPrescription = document.getElementById('prescriptionForm');
+            const btnFile = document.getElementById('toggleFileForm');
+            const btnCancelFile = document.getElementById('cancelFile');
+            const formFile = document.getElementById('fileForm');
 
-  btnPrescription?.addEventListener('click', () => formPrescription?.classList.toggle('hidden'));
-  btnCancelPrescription?.addEventListener('click', () => formPrescription?.classList.add('hidden'));
+            btnFile?.addEventListener('click', () => formFile?.classList.toggle('hidden'));
+            btnCancelFile?.addEventListener('click', () => formFile?.classList.add('hidden'));
+          }
+          // Initialize immediately
+          setupToggles();
+          // Also handle view transitions if enabled
+          document.addEventListener('astro:after-swap', setupToggles);
+        </script>
 
-  const btnFile = document.getElementById('toggleFileForm');
-  const btnCancelFile = document.getElementById('cancelFile');
-  const formFile = document.getElementById('fileForm');
-
-  btnFile?.addEventListener('click', () => formFile?.classList.toggle('hidden'));
-  btnCancelFile?.addEventListener('click', () => formFile?.classList.add('hidden'));
-
-  // PDF Logic
+        <script>
+          import { jsPDF } from 'jspdf';
   document.getElementById('downloadPdf')?.addEventListener('click', () => {
     const dataContainer = document.getElementById('pdfData');
     if (!dataContainer) return;
@@ -506,6 +509,7 @@ const age = cons.dateOfBirth ? Math.abs(new Date(Date.now() - new Date(cons.date
     doc.save(`Receta_${patientName.replace(/ /g, '_')}_${date}.pdf`);
   });
 </script>
+</Layout>
 
 <style>
   .animate-slide-down {
