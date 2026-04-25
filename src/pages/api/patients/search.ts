@@ -36,10 +36,11 @@ export const GET: APIRoute = async ({ request, cookies }) => {
                   u.firstName LIKE ?
                   OR u.lastName LIKE ?
                   OR u.matricula LIKE ?
+                  OR u.email LIKE ?
                 )
                 LIMIT 20
             `,
-            args: [user.userId, queryTerm, queryTerm, queryTerm]
+            args: [user.userId, queryTerm, queryTerm, queryTerm, queryTerm]
         });
 
         return new Response(JSON.stringify({ patients: res.rows }), {

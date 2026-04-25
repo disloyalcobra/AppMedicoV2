@@ -11,7 +11,7 @@ type Coach = {
 };
 
 const user = Astro.locals.user;
-if (!checkRole(user, [ROLES.DOCTOR, ROLES.JEFE_MEDICO, ROLES.ADMINISTRADOR, ROLES.NUTRIOLOGO, ROLES.ENTRENADOR])) {
+if (!checkRole(user, [ROLES.DOCTOR, ROLES.JEFE_MEDICO, ROLES.ADMINISTRADOR, ROLES.NUTRIOLOGO, ROLES.ENTRENADOR, ROLES.FISIOTERAPEUTA])) {
   return Astro.redirect('/403');
 }
 
@@ -26,78 +26,8 @@ const coaches: Coach[] = coachesRes.rows.map((r) => ({
   lastName: String(r.lastName),
 }));
 
-let error = '';
-
-if (Astro.request.method === 'POST') {
-  try {
-    const data = await Astro.request.formData();
-    const firstName = data.get('firstName') as string;
-    const lastName = data.get('lastName') as string;
-    const matricula = data.get('matricula') as string;
-    const gender = data.get('gender') as string;
-    const dateOfBirth = data.get('dateOfBirth') as string;
-    const bloodType = data.get('bloodType') as string;
-    const weight = data.get('weight') ? Number(data.get('weight')) : null;
-    const height = data.get('height') ? Number(data.get('height')) : null;
-    const allergies = data.get('allergies') as string;
-    const isAthlete = data.get('isAthlete') === '1' ? 1 : 0;
-    const schoolLevel = data.get('schoolLevel') as string;
-    const coachId = data.get('coachId') ? Number(data.get('coachId')) : null;
-
-    // Transaction to ensure both User and Patient are created
-    await db.batch([
-      {
-        sql: `INSERT INTO Users (firstName, lastName, matricula, roleId) VALUES (?, ?, ?, ?)`,
-        args: [firstName, lastName, matricula || null, ROLES.ESTUDIANTE]
-      },
-      {
-        sql: `INSERT INTO Patients (patientId, dateOfBirth, gender, bloodType, allergies, weight, height, isAthlete, schoolLevel)
-              VALUES (last_insert_rowid(), ?, ?, ?, ?, ?, ?, ?, ?)`,
-        args: [dateOfBirth, gender, bloodType, allergies, weight, height, isAthlete, schoolLevel]
-      }
-    ], "write");
-
-    // Obtener el ID del paciente recién creado
-    const patientIdResult = await db.execute({
-      sql: `SELECT last_insert_rowid() as patientId`,
-      args: []
-    });
-    const newPatientId = Number(patientIdResult.rows[0].patientId);
-
-    // Auto-link the creator to the patient
-    const roleMap: Record<number, string> = {
-      [ROLES.DOCTOR]: 'Doctor',
-      [ROLES.NUTRIOLOGO]: 'Nutritionist',
-      [ROLES.ENTRENADOR]: 'Coach'
-    };
-    const creatorRole = user?.roleId ? roleMap[user.roleId] : null;
-
-    if (creatorRole && user?.userId) {
-      await db.execute({
-        sql: `INSERT INTO User_Patient (userId, patientId, roleType) VALUES (?, ?, ?)`,
-        args: [user.userId, newPatientId, creatorRole]
-      });
-    }
-
-    // Si es atleta y se seleccionó un coach EXTRA en el dropdown
-    if (isAthlete === 1 && coachId && coachId !== user?.userId) {
-      await db.execute({
-        sql: `INSERT OR IGNORE INTO User_Patient (userId, patientId, roleType) VALUES (?, ?, 'Coach')`,
-        args: [coachId, newPatientId]
-      });
-    }
-
-    return Astro.redirect('/patients');
-  } catch (e) {
-    if (e instanceof Error) {
-      error = e.message;
-      if (error.includes('UNIQUE constraint failed: Users.matricula')) {
-        error = 'Ya existe un usuario con esa matrícula.';
-      }
-      console.error('Error creating patient:', error);
-    }
-  }
-}
+// El formulario ahora se maneja vía AJAX en el componente PatientForm.astro
+const error = '';
 ---
 
 <Layout title="Nuevo Paciente">

@@ -4,7 +4,7 @@ import { ROLES, checkRole } from '../../functions/checkRole';
 import { db } from '../../turso';
 
 const user = Astro.locals.user;
-if (!checkRole(user, [ROLES.DOCTOR, ROLES.JEFE_MEDICO, ROLES.STAFF, ROLES.ADMINISTRADOR, ROLES.NUTRIOLOGO, ROLES.ESTUDIANTE])) {
+if (!checkRole(user, [ROLES.DOCTOR, ROLES.JEFE_MEDICO, ROLES.STAFF, ROLES.ADMINISTRADOR, ROLES.NUTRIOLOGO, ROLES.ESTUDIANTE, ROLES.FISIOTERAPEUTA])) {
   return Astro.redirect('/403');
 }
 
@@ -39,13 +39,13 @@ let query = `
   FROM Appointments a
   JOIN Patients p ON a.patientId = p.patientId
   JOIN Users u ON p.patientId = u.userId
-  JOIN Users ud ON a.doctorId = ud.userId
+  JOIN Users ud ON a.specialistId = ud.userId
   WHERE date(a.dateTime) >= ? AND date(a.dateTime) <= ?
 `;
 let args: any[] = [startDateStr, endDateStr];
 
-if (user?.roleId === ROLES.DOCTOR || user?.roleId === ROLES.NUTRIOLOGO) {
-    query += ` AND a.doctorId = ?`;
+if (user?.roleId === ROLES.DOCTOR || user?.roleId === ROLES.NUTRIOLOGO || user?.roleId === ROLES.FISIOTERAPEUTA) {
+    query += ` AND a.specialistId = ?`;
     args.push(user.userId);
 }
 

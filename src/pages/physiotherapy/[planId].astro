@@ -1,0 +1,555 @@
+---
+import Layout from '../../layouts/Layout.astro';
+import { ROLES, checkRole } from '../../functions/checkRole';
+import { db } from '../../turso';
+
+const user = Astro.locals.user;
+if (!checkRole(user, [ROLES.FISIOTERAPEUTA, ROLES.DOCTOR, ROLES.JEFE_MEDICO, ROLES.ADMINISTRADOR, ROLES.ESTUDIANTE, ROLES.ENTRENADOR])) {
+  return Astro.redirect('/403');
+}
+
+const { planId } = Astro.params;
+if (!planId) return Astro.redirect('/physiotherapy');
+
+const roleId = Number(user?.roleId);
+const canWrite = [ROLES.FISIOTERAPEUTA, ROLES.ADMINISTRADOR, ROLES.JEFE_MEDICO].includes(roleId);
+const isAdmin = [ROLES.ADMINISTRADOR, ROLES.JEFE_MEDICO].includes(roleId);
+
+// Verificar acceso al plan
+if (!isAdmin) {
+  const isStudent = roleId === ROLES.ESTUDIANTE;
+  const isCoach = roleId === ROLES.ENTRENADOR;
+  
+  if (isStudent) {
+    // El estudiante solo puede ver su propio plan
+    const access = await db.execute({
+      sql: `SELECT 1 FROM PhysiotherapyPlans WHERE patientId = ? AND planId = ?`,
+      args: [user?.userId ?? null, planId]
+    });
+    if (access.rows.length === 0) return Astro.redirect('/403');
+  } else if (isCoach) {
+    // El entrenador solo puede ver planes de sus alumnos vinculados
+    const access = await db.execute({
+      sql: `SELECT 1 FROM User_Patient up 
+            JOIN PhysiotherapyPlans pp ON pp.patientId = up.patientId 
+            WHERE up.userId = ? AND pp.planId = ? AND up.roleType = 'Coach'`,
+      args: [user?.userId ?? null, planId]
+    });
+    if (access.rows.length === 0) return Astro.redirect('/403');
+  } else {
+    // El personal médico solo puede ver planes de pacientes vinculados
+    const access = await db.execute({
+      sql: `SELECT 1 FROM User_Patient up JOIN PhysiotherapyPlans pp ON pp.patientId = up.patientId WHERE up.userId = ? AND pp.planId = ?`,
+      args: [user?.userId ?? null, planId]
+    });
+    if (access.rows.length === 0) return Astro.redirect('/403');
+  }
+}
+
+// Cargar plan completo
+const planRes = await db.execute({
+  sql: `SELECT pp.*, u.firstName || ' ' || u.lastName as patientName, pp.patientId,
+               ph.firstName || ' ' || ph.lastName as physioName,
+               i.injuryType, i.bodyZone, i.severity as injurySeverity
+        FROM PhysiotherapyPlans pp
+        JOIN Users u ON pp.patientId = u.userId
+        JOIN Users ph ON pp.physiotherapistId = ph.userId
+        LEFT JOIN Injuries i ON pp.injuryId = i.injuryId
+        WHERE pp.planId = ?`,
+  args: [planId]
+});
+if (planRes.rows.length === 0) return Astro.redirect('/404');
+const plan = planRes.rows[0];
+
+// Sesiones - filtrar por patientId del plan (planId no existe en sessions según schema real)
+const sessionsRes = await db.execute({
+  sql: `SELECT s.*, u.firstName || ' ' || u.lastName as createdByName
+        FROM PhysiotherapySessions s
+        JOIN Users u ON s.createdBy = u.userId
+        WHERE s.patientId = ? AND s.injuryId = ?
+        ORDER BY s.sessionDate DESC`,
+  args: [plan.patientId, plan.injuryId]
+});
+const sessions = sessionsRes.rows;
+
+// Alta
+const dischargeRes = await db.execute({
+  sql: `SELECT * FROM PhysiotherapyDischarges WHERE planId = ?`,
+  args: [planId]
+});
+const discharge = dischargeRes.rows[0] ?? null;
+
+// Métricas de adherencia
+const completedSessions = sessions.filter((s: any) => s.status === 'Completada').length;
+const totalPlanned = Number(plan.totalSessionsPlanned) || 0;
+const adherence = totalPlanned > 0 ? Math.round((completedSessions / totalPlanned) * 100) : 0;
+
+// Manejar POST (nueva sesión / alta)
+let formError = '';
+if (Astro.request.method === 'POST') {
+  const data = await Astro.request.formData();
+  const action = data.get('_action');
+
+  if (action === 'addSession' && canWrite) {
+    const sessionDate = data.get('sessionDate') as string;
+    const therapyType = data.get('therapyType') as string;
+    const durationMinutes = data.get('durationMinutes') as string;
+    const painLevel = data.get('painLevel') as string;
+    const rangeOfMotion = data.get('rangeOfMotion') as string;
+    const strengthLevel = data.get('strengthLevel') as string;
+    const progressNotes = data.get('progressNotes') as string;
+
+    if (!sessionDate || !therapyType) {
+      formError = 'Fecha y tipo de terapia son obligatorios.';
+    } else if (String(plan.status) === 'Cancelado') {
+      formError = 'No puedes agregar sesiones a un plan cancelado.';
+    } else {
+      const finalSessionDate = sessionDate || new Date().toISOString().split('T')[0];
+      await db.execute({
+        sql: `INSERT INTO PhysiotherapySessions
+              (planId, patientId, injuryId, physiotherapistId, sessionDate, therapyType, durationMinutes, painLevel, rangeOfMotion, strengthLevel, progressNotes, status, createdBy)
+              VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'Completada', ?)`,
+        args: [planId, plan.patientId, plan.injuryId, plan.physiotherapistId, finalSessionDate, therapyType, durationMinutes || 60,
+               painLevel || null, rangeOfMotion || null, strengthLevel || null, progressNotes || null, user?.userId ?? null]
+      });
+      return Astro.redirect(`/physiotherapy/${planId}?success=session`);
+    }
+  }
+
+  if (action === 'discharge' && canWrite) {
+    const outcome = data.get('outcome') as string;
+    const recommendations = data.get('recommendations') as string;
+    if (String(plan.status) !== 'Activo') {
+      formError = 'Solo se puede dar de alta a planes activos.';
+    } else {
+      const today = new Date().toISOString().split('T')[0];
+      await db.execute({
+        sql: `INSERT INTO PhysiotherapyDischarges (planId, dischargeDate, outcome, recommendations) VALUES (?, ?, ?, ?)`,
+        args: [planId, today, outcome || null, recommendations || null]
+      });
+      await db.execute({
+        sql: `UPDATE PhysiotherapyPlans SET status = 'Completado', endDate = ? WHERE planId = ?`,
+        args: [today, planId]
+      });
+      return Astro.redirect(`/physiotherapy/${planId}?success=discharge`);
+    }
+  }
+
+  if (action === 'cancelPlan' && canWrite) {
+    await db.execute({
+      sql: `UPDATE PhysiotherapyPlans SET status = 'Cancelado' WHERE planId = ?`,
+      args: [planId]
+    });
+    return Astro.redirect(`/physiotherapy/${planId}`);
+  }
+
+  if (action === 'editPlan' && canWrite) {
+    const goals = data.get('goals') as string;
+    const totalSessionsPlanned = Number(data.get('totalSessionsPlanned') || 0);
+    await db.execute({
+      sql: `UPDATE PhysiotherapyPlans SET goals = ?, totalSessionsPlanned = ? WHERE planId = ?`,
+      args: [goals, totalSessionsPlanned, planId]
+    });
+    return Astro.redirect(`/physiotherapy/${planId}?success=plan_updated`);
+  }
+
+  if (action === 'editSession' && canWrite) {
+    const sessionId = data.get('sessionId') as string;
+    const therapyType = data.get('therapyType') as string;
+    const durationMinutes = data.get('durationMinutes') as string;
+    const painLevel = data.get('painLevel') as string;
+    const rangeOfMotion = data.get('rangeOfMotion') as string;
+    const strengthLevel = data.get('strengthLevel') as string;
+    const progressNotes = data.get('progressNotes') as string;
+
+    await db.execute({
+      sql: `UPDATE PhysiotherapySessions SET therapyType = ?, durationMinutes = ?, painLevel = ?, rangeOfMotion = ?, strengthLevel = ?, progressNotes = ? WHERE sessionId = ?`,
+      args: [therapyType, durationMinutes || 60, painLevel || null, rangeOfMotion || null, strengthLevel || null, progressNotes || null, sessionId]
+    });
+    return Astro.redirect(`/physiotherapy/${planId}?success=session_updated`);
+  }
+}
+
+const statusColor: Record<string, string> = {
+  'Activo': 'bg-emerald-50 text-emerald-700 border-emerald-200',
+  'Completado': 'bg-sky-50 text-sky-700 border-sky-200',
+  'Cancelado': 'bg-slate-100 text-slate-500 border-slate-200',
+};
+const sessionStatusColor: Record<string, string> = {
+  'Completada': 'bg-emerald-50 text-emerald-700 border-emerald-200',
+  'Programada': 'bg-amber-50 text-amber-700 border-amber-200',
+  'Cancelada': 'bg-slate-100 text-slate-400 border-slate-200',
+};
+const successMsg = Astro.url.searchParams.get('success');
+---
+
+<Layout title={`Plan Fisioterapia — ${plan.patientName}`}>
+  <div class="mb-6">
+    <a href="/physiotherapy" class="text-violet-600 hover:text-violet-700 text-sm font-semibold flex items-center gap-1 mb-2">
+      <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m15 18-6-6 6-6"/></svg>
+      Volver a Fisioterapia
+    </a>
+    <div class="flex items-center gap-3 flex-wrap">
+      <h1 class="text-3xl font-bold text-slate-800 tracking-tight">{plan.patientName}</h1>
+      <span class={`text-xs font-bold px-3 py-1 rounded-full border uppercase tracking-wider ${statusColor[String(plan.status)]}`}>{plan.status}</span>
+    </div>
+    <p class="text-slate-500 mt-1">Fisioterapeuta: <span class="font-semibold text-violet-700">{plan.physioName}</span> · Inicio: {plan.startDate}</p>
+    {canWrite && String(plan.status) === 'Activo' && (
+      <button id="openEditPlan" class="mt-2 text-xs text-violet-600 font-bold flex items-center gap-1 hover:underline">
+        <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 3a2.828 2.828 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5L17 3z"/></svg>
+        Editar Objetivos
+      </button>
+    )}
+  </div>
+
+  <div id="editPlanModal" class="hidden fixed inset-0 bg-slate-900/40 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+    <div class="glass-card rounded-3xl p-6 w-full max-w-md shadow-2xl">
+      <h3 class="text-xl font-bold text-slate-800 mb-4">Editar Detalles del Plan</h3>
+      <form method="POST" class="space-y-4">
+        <input type="hidden" name="_action" value="editPlan" />
+        <div>
+          <label class="block text-xs font-bold text-slate-600 mb-1">Objetivos del Plan</label>
+          <textarea name="goals" rows="4" class="w-full bg-white/60 border border-slate-200 rounded-xl px-4 py-3 text-slate-800 focus:outline-none focus:ring-2 focus:ring-violet-500 text-sm resize-none">{plan.goals}</textarea>
+        </div>
+        <div>
+          <label class="block text-xs font-bold text-slate-600 mb-1">Total de Sesiones Planeadas</label>
+          <input type="number" name="totalSessionsPlanned" value={Number(plan.totalSessionsPlanned || 0)} min="1" max="100" class="w-full bg-white/60 border border-slate-200 rounded-xl px-4 py-2 text-slate-800 focus:outline-none focus:ring-2 focus:ring-violet-500 text-sm" />
+        </div>
+        <div class="flex gap-2 justify-end pt-2">
+          <button type="button" id="closeEditPlan" class="px-4 py-2 text-slate-500 font-bold">Cancelar</button>
+          <button type="submit" class="px-6 py-2 bg-violet-600 text-white font-bold rounded-xl shadow-lg">Actualizar Plan</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  {successMsg && (
+    <div class="mb-6 p-4 bg-emerald-50 border border-emerald-200 rounded-2xl text-emerald-700 font-medium">
+      {successMsg === 'session' ? '✅ Sesión registrada correctamente.' : 
+       successMsg === 'plan_updated' ? '✅ Plan actualizado correctamente.' :
+       successMsg === 'session_updated' ? '✅ Sesión actualizada correctamente.' :
+       '✅ Alta generada. El plan ha sido completado.'}
+    </div>
+  )}
+  {formError && (
+    <div class="mb-6 p-4 bg-rose-50 border border-rose-200 rounded-2xl text-rose-700 font-medium">{formError}</div>
+  )}
+
+  <!-- Resumen del plan -->
+  <div class="grid grid-cols-2 md:grid-cols-4 gap-4 mb-8">
+    <div class="glass-card rounded-2xl p-4 text-center">
+      <p class="text-xs text-slate-400 uppercase font-bold mb-1">Sesiones</p>
+      <p class="text-3xl font-black text-slate-800">{completedSessions} <span class="text-sm font-bold text-slate-400">/ {totalPlanned}</span></p>
+    </div>
+    <div class="glass-card rounded-2xl p-4 text-center">
+      <p class="text-xs text-slate-400 uppercase font-bold mb-1">Adherencia</p>
+      <p class={`text-3xl font-extrabold ${adherence >= 80 ? 'text-emerald-600' : adherence >= 50 ? 'text-amber-600' : 'text-rose-600'}`}>{adherence}%</p>
+      <div class="w-full h-1.5 bg-slate-100 rounded-full mt-2 overflow-hidden">
+        <div class={`h-full rounded-full ${adherence >= 80 ? 'bg-emerald-500' : adherence >= 50 ? 'bg-amber-500' : 'bg-rose-500'}`} style={`width: ${adherence}%`}></div>
+      </div>
+    </div>
+    {plan.injuryType && (
+      <div class="glass-card rounded-2xl p-4 text-center">
+        <p class="text-xs text-slate-400 uppercase font-bold mb-1">Lesión</p>
+        <p class="text-sm font-bold text-slate-800">{plan.injuryType}</p>
+        <p class="text-xs text-slate-500">{plan.bodyZone}</p>
+      </div>
+    )}
+    <div class="glass-card rounded-2xl p-4 text-center col-span-2">
+      <p class="text-xs text-slate-400 uppercase font-bold mb-1">Objetivos</p>
+      <p class="text-sm text-slate-700 italic">"{plan.goals ?? 'Sin objetivos definidos'}"</p>
+    </div>
+  </div>
+
+  <div class="grid grid-cols-1 xl:grid-cols-3 gap-6">
+    <!-- Sesiones -->
+    <div class="xl:col-span-2 space-y-4">
+      <div class="flex items-center justify-between">
+        <h2 class="text-xl font-bold text-slate-800">Sesiones</h2>
+        {canWrite && String(plan.status) === 'Activo' && (
+          <button id="openSessionForm" class="flex items-center gap-1 text-sm bg-violet-50 text-violet-700 px-3 py-1.5 rounded-lg border border-violet-200 font-semibold hover:bg-violet-500 hover:text-white transition-colors">
+            <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+            Nueva Sesión
+          </button>
+        )}
+      </div>
+
+      <!-- Formulario nueva sesión (oculto por defecto) -->
+      {canWrite && String(plan.status) === 'Activo' && (
+        <div id="sessionForm" class="hidden glass-card rounded-2xl p-5 border border-violet-200">
+          <h3 class="font-bold text-slate-700 mb-4">Registrar Sesión</h3>
+          <form method="POST" class="space-y-4">
+            <input type="hidden" name="_action" value="addSession" />
+            <div class="grid grid-cols-1 gap-4">
+              <input type="hidden" name="sessionDate" value={new Date().toISOString().split('T')[0]} />
+              <div>
+                <label class="block text-xs font-bold text-slate-600 mb-1">Tipo de Terapia *</label>
+                <select name="therapyType" required class="w-full bg-white/60 border border-slate-200 rounded-xl px-3 py-2 text-slate-800 focus:outline-none focus:ring-2 focus:ring-violet-500 text-sm">
+                  <option value="">Selecciona...</option>
+                  <option value="Electroterapia">Electroterapia</option>
+                  <option value="Ultrasonido">Ultrasonido</option>
+                  <option value="Termoterapia">Termoterapia</option>
+                  <option value="Crioterapia">Crioterapia</option>
+                  <option value="Kinesiotaping">Kinesiotaping</option>
+                  <option value="Masoterapia">Masoterapia</option>
+                  <option value="Ejercicio Terapéutico">Ejercicio Terapéutico</option>
+                  <option value="Hidroterapia">Hidroterapia</option>
+                  <option value="Manipulación">Manipulación</option>
+                  <option value="Otro">Otro</option>
+                </select>
+              </div>
+            </div>
+            <div class="grid grid-cols-3 gap-4">
+              <div>
+                <label class="block text-xs font-bold text-slate-600 mb-1">Duración (min)</label>
+                <input type="number" name="durationMinutes" value="60" min="5" max="240" class="w-full bg-white/60 border border-slate-200 rounded-xl px-3 py-2 text-slate-800 focus:outline-none focus:ring-2 focus:ring-violet-500 text-sm" />
+              </div>
+              <div>
+                <label class="block text-xs font-bold text-slate-600 mb-1">Dolor (0-10)</label>
+                <input type="number" name="painLevel" min="0" max="10" placeholder="0-10" class="w-full bg-white/60 border border-slate-200 rounded-xl px-3 py-2 text-slate-800 focus:outline-none focus:ring-2 focus:ring-violet-500 text-sm" />
+              </div>
+              <div>
+                <label class="block text-xs font-bold text-slate-600 mb-1">Fuerza muscular</label>
+                <select name="strengthLevel" class="w-full bg-white/60 border border-slate-200 rounded-xl px-3 py-2 text-slate-800 focus:outline-none focus:ring-2 focus:ring-violet-500 text-sm">
+                  <option value="">—</option>
+                  <option value="0/5">0/5</option>
+                  <option value="1/5">1/5</option>
+                  <option value="2/5">2/5</option>
+                  <option value="3/5">3/5</option>
+                  <option value="4/5">4/5</option>
+                  <option value="5/5">5/5</option>
+                </select>
+              </div>
+            </div>
+            <div>
+              <label class="block text-xs font-bold text-slate-600 mb-1">Rango de movimiento</label>
+              <input type="text" name="rangeOfMotion" placeholder="Ej: Flexión 90°, Extensión 30°" class="w-full bg-white/60 border border-slate-200 rounded-xl px-3 py-2 text-slate-800 focus:outline-none focus:ring-2 focus:ring-violet-500 text-sm" />
+            </div>
+            <div>
+              <label class="block text-xs font-bold text-slate-600 mb-1">Notas de progreso</label>
+              <textarea name="progressNotes" rows="2" class="w-full bg-white/60 border border-slate-200 rounded-xl px-3 py-2 text-slate-800 focus:outline-none focus:ring-2 focus:ring-violet-500 text-sm resize-none"></textarea>
+            </div>
+            <div class="flex gap-2">
+              <button type="submit" class="px-4 py-2 bg-gradient-to-r from-violet-500 to-purple-600 text-white font-bold rounded-xl text-sm">Guardar Sesión</button>
+              <button type="button" id="cancelSessionForm" class="px-4 py-2 border border-slate-200 text-slate-600 font-semibold rounded-xl text-sm hover:bg-slate-50">Cancelar</button>
+            </div>
+          </form>
+        </div>
+      )}
+
+      <!-- Lista de sesiones -->
+      {sessions.length === 0 ? (
+        <div class="glass-card rounded-2xl p-8 text-center border border-white/60 text-slate-400">
+          No hay sesiones registradas aún.
+        </div>
+      ) : (
+        <div class="space-y-3">
+          {sessions.map((s: any) => (
+            <div class="glass-card rounded-2xl p-4 border border-white/60">
+              <div class="flex justify-between items-start mb-2">
+                <div>
+                  <p class="font-bold text-slate-800">{s.therapyType}</p>
+                  <p class="text-xs text-slate-400">{s.sessionDate} · {s.durationMinutes} min · Por {s.createdByName}</p>
+                </div>
+                <div class="flex items-center gap-2">
+                  {s.painLevel !== null && (
+                    <span class={`text-xs font-bold px-2 py-0.5 rounded-full ${Number(s.painLevel) <= 3 ? 'bg-emerald-50 text-emerald-700' : Number(s.painLevel) <= 6 ? 'bg-amber-50 text-amber-700' : 'bg-rose-50 text-rose-700'}`}>
+                      Dolor: {s.painLevel}/10
+                    </span>
+                  )}
+                  <span class={`text-[10px] font-bold px-2 py-0.5 rounded-full border uppercase ${sessionStatusColor[String(s.status)]}`}>{s.status}</span>
+                  {canWrite && String(plan.status) === 'Activo' && (
+                    <button 
+                      class="edit-session-btn p-1 text-slate-400 hover:text-violet-600 transition-colors"
+                      data-session={JSON.stringify(s)}
+                    >
+                      <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 3a2.828 2.828 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5L17 3z"/></svg>
+                    </button>
+                  )}
+                </div>
+              </div>
+              <div class="flex flex-wrap gap-x-6 gap-y-1 text-xs text-slate-500">
+                {s.strengthLevel && <span>Fuerza: <strong>{s.strengthLevel}</strong></span>}
+                {s.rangeOfMotion && <span>Rango: <strong>{s.rangeOfMotion}</strong></span>}
+              </div>
+              {s.progressNotes && <p class="text-sm text-slate-600 italic mt-2">"{s.progressNotes}"</p>}
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+
+    <!-- Panel lateral: Alta y Acciones -->
+    <div class="space-y-5">
+      <!-- Enlace al expediente -->
+      <a href={`/patients/${plan.patientId}`} class="glass-card rounded-2xl p-4 border border-white/60 flex items-center gap-3 hover:border-violet-200 transition-colors block">
+        <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="text-violet-500"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/></svg>
+        <div>
+          <p class="font-bold text-slate-800 text-sm">Ver Expediente</p>
+          <p class="text-xs text-slate-400">{plan.patientName}</p>
+        </div>
+      </a>
+
+      <!-- Alta -->
+      {discharge ? (
+        <div class="glass-card rounded-2xl p-5 border border-sky-200 bg-sky-50/50">
+          <h3 class="font-bold text-sky-800 mb-3 flex items-center gap-2">
+            <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg>
+            Alta Registrada
+          </h3>
+          <p class="text-xs text-sky-700"><strong>Fecha:</strong> {discharge.dischargeDate}</p>
+          {discharge.outcome && <p class="text-xs text-sky-700 mt-1"><strong>Resultado:</strong> {discharge.outcome}</p>}
+          {discharge.recommendations && <p class="text-xs text-sky-700 mt-1"><strong>Recomendaciones:</strong> {discharge.recommendations}</p>}
+        </div>
+      ) : canWrite && String(plan.status) === 'Activo' && (
+        <div class="glass-card rounded-2xl p-5 border border-white/60">
+          <h3 class="font-bold text-slate-700 mb-3">Generar Alta</h3>
+          <form method="POST" class="space-y-3">
+            <input type="hidden" name="_action" value="discharge" />
+            <div>
+              <label class="block text-xs font-bold text-slate-600 mb-1">Resultado clínico</label>
+              <select name="outcome" class="w-full bg-white/60 border border-slate-200 rounded-xl px-3 py-2 text-slate-800 focus:outline-none focus:ring-2 focus:ring-violet-500 text-sm">
+                <option value="Recuperación completa">Recuperación completa</option>
+                <option value="Mejoría significativa">Mejoría significativa</option>
+                <option value="Mejoría parcial">Mejoría parcial</option>
+                <option value="Sin mejoría">Sin mejoría</option>
+              </select>
+            </div>
+            <div>
+              <label class="block text-xs font-bold text-slate-600 mb-1">Recomendaciones</label>
+              <textarea name="recommendations" rows="2" class="w-full bg-white/60 border border-slate-200 rounded-xl px-3 py-2 text-slate-800 focus:outline-none focus:ring-2 focus:ring-violet-500 text-sm resize-none" placeholder="Ejercicios de mantenimiento, restricciones..."></textarea>
+            </div>
+            <button type="submit" onclick="return confirm('¿Confirmar alta? El plan se marcará como Completado.')" class="w-full py-2 bg-sky-500 text-white font-bold rounded-xl text-sm hover:bg-sky-600 transition-colors">
+              Confirmar Alta
+            </button>
+          </form>
+        </div>
+      )}
+
+      <!-- Cancelar plan -->
+      {canWrite && String(plan.status) === 'Activo' && !discharge && (
+        <form method="POST">
+          <input type="hidden" name="_action" value="cancelPlan" />
+          <button type="submit" onclick="return confirm('¿Cancelar este plan de fisioterapia?')" class="w-full py-2 border border-rose-200 text-rose-600 font-semibold rounded-xl text-sm hover:bg-rose-50 transition-colors">
+            Cancelar Plan
+          </button>
+        </form>
+      )}
+    </div>
+  </div>
+</Layout>
+
+<div id="editSessionModal" class="hidden fixed inset-0 bg-slate-900/40 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+  <div class="glass-card rounded-3xl p-6 w-full max-w-md shadow-2xl">
+    <h3 class="text-xl font-bold text-slate-800 mb-4">Editar Sesión</h3>
+    <form method="POST" class="space-y-4">
+      <input type="hidden" name="_action" value="editSession" />
+      <input type="hidden" name="sessionId" id="editSessionId" />
+      
+      <div>
+        <label class="block text-xs font-bold text-slate-600 mb-1">Tipo de Terapia *</label>
+        <select name="therapyType" id="editTherapyType" required class="w-full bg-white/60 border border-slate-200 rounded-xl px-3 py-2 text-slate-800 focus:outline-none focus:ring-2 focus:ring-violet-500 text-sm">
+          <option value="Electroterapia">Electroterapia</option>
+          <option value="Ultrasonido">Ultrasonido</option>
+          <option value="Termoterapia">Termoterapia</option>
+          <option value="Crioterapia">Crioterapia</option>
+          <option value="Kinesiotaping">Kinesiotaping</option>
+          <option value="Masoterapia">Masoterapia</option>
+          <option value="Ejercicio Terapéutico">Ejercicio Terapéutico</option>
+          <option value="Hidroterapia">Hidroterapia</option>
+          <option value="Manipulación">Manipulación</option>
+          <option value="Otro">Otro</option>
+        </select>
+      </div>
+
+      <div class="grid grid-cols-2 gap-4">
+        <div>
+          <label class="block text-xs font-bold text-slate-600 mb-1">Duración (min)</label>
+          <input type="number" name="durationMinutes" id="editDuration" min="5" max="240" class="w-full bg-white/60 border border-slate-200 rounded-xl px-3 py-2 text-slate-800 focus:outline-none focus:ring-2 focus:ring-violet-500 text-sm" />
+        </div>
+        <div>
+          <label class="block text-xs font-bold text-slate-600 mb-1">Dolor (0-10)</label>
+          <input type="number" name="painLevel" id="editPain" min="0" max="10" class="w-full bg-white/60 border border-slate-200 rounded-xl px-3 py-2 text-slate-800 focus:outline-none focus:ring-2 focus:ring-violet-500 text-sm" />
+        </div>
+      </div>
+
+      <div class="grid grid-cols-2 gap-4">
+        <div>
+          <label class="block text-xs font-bold text-slate-600 mb-1">Fuerza muscular</label>
+          <select name="strengthLevel" id="editStrength" class="w-full bg-white/60 border border-slate-200 rounded-xl px-3 py-2 text-slate-800 focus:outline-none focus:ring-2 focus:ring-violet-500 text-sm">
+            <option value="">—</option>
+            <option value="0/5">0/5</option>
+            <option value="1/5">1/5</option>
+            <option value="2/5">2/5</option>
+            <option value="3/5">3/5</option>
+            <option value="4/5">4/5</option>
+            <option value="5/5">5/5</option>
+          </select>
+        </div>
+        <div>
+          <label class="block text-xs font-bold text-slate-600 mb-1">Rango de movimiento</label>
+          <input type="text" name="rangeOfMotion" id="editROM" class="w-full bg-white/60 border border-slate-200 rounded-xl px-3 py-2 text-slate-800 focus:outline-none focus:ring-2 focus:ring-violet-500 text-sm" />
+        </div>
+      </div>
+
+      <div>
+        <label class="block text-xs font-bold text-slate-600 mb-1">Notas de progreso</label>
+        <textarea name="progressNotes" id="editNotes" rows="3" class="w-full bg-white/60 border border-slate-200 rounded-xl px-3 py-2 text-slate-800 focus:outline-none focus:ring-2 focus:ring-violet-500 text-sm resize-none"></textarea>
+      </div>
+
+      <div class="flex gap-2 justify-end pt-2">
+        <button type="button" id="closeEditSession" class="px-4 py-2 text-slate-500 font-bold">Cancelar</button>
+        <button type="submit" class="px-6 py-2 bg-violet-600 text-white font-bold rounded-xl shadow-lg">Guardar Cambios</button>
+      </div>
+    </form>
+  </div>
+</div>
+
+<script>
+  // Script para manejar formularios y modales
+  document.getElementById('openSessionForm')?.addEventListener('click', () => {
+    document.getElementById('sessionForm')?.classList.remove('hidden');
+    document.getElementById('openSessionForm')?.classList.add('hidden');
+  });
+  document.getElementById('cancelSessionForm')?.addEventListener('click', () => {
+    document.getElementById('sessionForm')?.classList.add('hidden');
+    document.getElementById('openSessionForm')?.classList.remove('hidden');
+  });
+
+  // Modal de Editar Plan
+  const editPlanBtn = document.getElementById('openEditPlan');
+  const editPlanModal = document.getElementById('editPlanModal');
+  const closeEditPlan = document.getElementById('closeEditPlan');
+
+  editPlanBtn?.addEventListener('click', () => editPlanModal?.classList.remove('hidden'));
+  closeEditPlan?.addEventListener('click', () => editPlanModal?.classList.add('hidden'));
+
+  // Modal de Editar Sesión
+  const editSessionModal = document.getElementById('editSessionModal');
+  const closeEditSession = document.getElementById('closeEditSession');
+
+  document.querySelectorAll('.edit-session-btn').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const session = JSON.parse((btn as HTMLElement).dataset.session || '{}');
+      
+      // Llenar formulario
+      (document.getElementById('editSessionId') as HTMLInputElement).value = session.sessionId;
+      (document.getElementById('editTherapyType') as HTMLSelectElement).value = session.therapyType;
+      (document.getElementById('editDuration') as HTMLInputElement).value = session.durationMinutes;
+      (document.getElementById('editPain') as HTMLInputElement).value = session.painLevel || '';
+      (document.getElementById('editStrength') as HTMLSelectElement).value = session.strengthLevel || '';
+      (document.getElementById('editROM') as HTMLInputElement).value = session.rangeOfMotion || '';
+      (document.getElementById('editNotes') as HTMLTextAreaElement).value = session.progressNotes || '';
+
+      editSessionModal?.classList.remove('hidden');
+    });
+  });
+
+  closeEditSession?.addEventListener('click', () => editSessionModal?.classList.add('hidden'));
+
+  // Cerrar modales al hacer clic fuera
+  window.addEventListener('click', (e) => {
+    if (e.target === editPlanModal) editPlanModal?.classList.add('hidden');
+    if (e.target === editSessionModal) editSessionModal?.classList.add('hidden');
+  });
+</script>

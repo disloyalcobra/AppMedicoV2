@@ -32,7 +32,7 @@ export const GET: APIRoute = async ({ request }) => {
         // Note: we need to filter status 'Pendiente' and 'Confirmada'
         const apptRes = await db.execute({
             sql: `SELECT dateTime FROM Appointments 
-                  WHERE doctorId = ? 
+                  WHERE specialistId = ? 
                   AND DATE(dateTime) = DATE(?) 
                   AND status IN ('Pendiente', 'Confirmada')`,
             args: [doctorId, dateStr]

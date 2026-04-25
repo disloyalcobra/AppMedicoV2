@@ -23,6 +23,7 @@ export const POST: APIRoute = async ({ request, cookies }) => {
         if (user.roleId === ROLES.DOCTOR) roleType = 'Doctor';
         else if (user.roleId === ROLES.NUTRIOLOGO) roleType = 'Nutritionist';
         else if (user.roleId === ROLES.ENTRENADOR) roleType = 'Coach';
+        else if (user.roleId === ROLES.FISIOTERAPEUTA) roleType = 'Physiotherapist';
         else {
             return new Response(JSON.stringify({ error: 'No tienes permisos para vincular pacientes' }), { status: 403 });
         }

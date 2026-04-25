@@ -35,8 +35,8 @@ if (user?.roleId === ROLES.ESTUDIANTE) {
   {user?.roleId === ROLES.ADMINISTRADOR || user?.roleId === ROLES.JEFE_MEDICO ? (
     // Vista para Administradores y Jefes Médicos (Estadísticas Globales)
     <AdminDashboard user={user} />
-  ) : user?.roleId === ROLES.DOCTOR ? (
-    // Vista para Doctores (Citas del día y Alertas)
+  ) : user?.roleId === ROLES.DOCTOR || user?.roleId === ROLES.FISIOTERAPEUTA ? (
+    // Vista para Doctores y Fisioterapeutas (Citas del día y Alertas)
     <DoctorDashboard user={user} />
   ) : user?.roleId === ROLES.NUTRIOLOGO ? (
     // Vista para Nutriólogos (Planes activos y seguimientos)

@@ -1,6 +1,6 @@
 import type { APIRoute } from "astro";
 import { db } from "../../turso";
-import { checkRole, ROLES } from "../../functions/checkRole";
+import { ROLES } from "../../functions/checkRole";
 
 let cache = new Map();
 
@@ -49,11 +49,11 @@ export const GET: APIRoute = async ({ request, locals }) => {
     let userPatientArgs: any[] = [];
 
     if (filterUserId) {
-        appointmentsFilter += ` AND doctorId = ?`;
+        appointmentsFilter += ` AND specialistId = ?`;
         appointmentsArgs.push(filterUserId);
         userPatientFilter = `JOIN User_Patient up ON p.patientId = up.patientId WHERE up.userId = ?`;
         userPatientArgs.push(filterUserId);
-    } else if (roleId === ROLES.NUTRIOLOGO || roleId === ROLES.ENTRENADOR) {
+    } else if (roleId === ROLES.NUTRIOLOGO || roleId === ROLES.ENTRENADOR || roleId === ROLES.FISIOTERAPEUTA) {
         // Para roles específicos que filtran por sus propios pacientes
         userPatientFilter = `JOIN User_Patient up ON p.patientId = up.patientId WHERE up.userId = ?`;
         userPatientArgs.push(user.userId);
@@ -95,12 +95,12 @@ export const GET: APIRoute = async ({ request, locals }) => {
         SELECT r.roleName, COUNT(u.userId) as count 
         FROM Users u 
         JOIN Roles r ON u.roleId = r.roleId 
-        WHERE r.roleName IN ('Doctor', 'Nutriólogo', 'Entrenador', 'Jefe Medico') 
+        WHERE r.roleName IN ('Doctor', 'Nutriólogo', 'Entrenador', 'Jefe Medico', 'Fisioterapeuta') 
         GROUP BY r.roleName
     `);
 
     // --- 2. CLINICAL ---
-    let clinicalJoin = filterUserId ? `JOIN Appointments a ON c.appointmentId = a.appointmentId WHERE a.doctorId = ? AND c.consultationDate >= date('now', ${dateModifier})` : `WHERE c.consultationDate >= date('now', ${dateModifier})`;
+    let clinicalJoin = filterUserId ? `JOIN Appointments a ON c.appointmentId = a.appointmentId WHERE a.specialistId = ? AND c.consultationDate >= date('now', ${dateModifier})` : `WHERE c.consultationDate >= date('now', ${dateModifier})`;
     let clinicalArgs = filterUserId ? [filterUserId] : [];
 
     const diagnosisRes = await db.execute({
@@ -125,7 +125,7 @@ export const GET: APIRoute = async ({ request, locals }) => {
     });
     const topSymptoms = Object.entries(symptomsWords).sort((a, b) => b[1] - a[1]).slice(0, 10).map(x => ({ name: x[0], count: x[1] }));
 
-    let medsJoin = filterUserId ? `JOIN Consultations c ON p.consultationId = c.consultationId JOIN Appointments a ON c.appointmentId = a.appointmentId WHERE a.doctorId = ? AND c.consultationDate >= date('now', ${dateModifier})` : `JOIN Consultations c ON p.consultationId = c.consultationId WHERE c.consultationDate >= date('now', ${dateModifier})`;
+    let medsJoin = filterUserId ? `JOIN Consultations c ON p.consultationId = c.consultationId JOIN Appointments a ON c.appointmentId = a.appointmentId WHERE a.specialistId = ? AND c.consultationDate >= date('now', ${dateModifier})` : `JOIN Consultations c ON p.consultationId = c.consultationId WHERE c.consultationDate >= date('now', ${dateModifier})`;
     
     const medsRes = await db.execute({
         sql: `SELECT m.brandName, COUNT(*) as count 
@@ -192,7 +192,7 @@ export const GET: APIRoute = async ({ request, locals }) => {
          injuriesArgs.push(filterUserId);
     } else if (filterUserId && (roleId === ROLES.DOCTOR || roleId === ROLES.JEFE_MEDICO)) {
          // Si es doctor viendo lesiones, filtrar por sus consultas
-         injuriesFilter += ` AND consultationId IN (SELECT consultationId FROM Consultations c JOIN Appointments a ON c.appointmentId = a.appointmentId WHERE a.doctorId = ?)`;
+         injuriesFilter += ` AND consultationId IN (SELECT consultationId FROM Consultations c JOIN Appointments a ON c.appointmentId = a.appointmentId WHERE a.specialistId = ?)`;
          injuriesArgs.push(filterUserId);
     }
 
@@ -247,47 +247,101 @@ export const GET: APIRoute = async ({ request, locals }) => {
     });
 
     const dischargesRes = await db.execute({
-        sql: `SELECT goalReached, COUNT(*) as count 
-              FROM NutritionalDischarges nd 
-              JOIN NutritionalPlans np ON nd.planId = np.planId 
-              ${nutFilter} 
+        sql: `SELECT goalReached, COUNT(*) as count
+              FROM NutritionalDischarges nd
+              JOIN NutritionalPlans np ON nd.planId = np.planId
+              ${nutFilter}
               GROUP BY goalReached`,
         args: nutArgs
     });
 
     // --- 6. ALERTS & NOTES ---
-    let notesFilter = `WHERE createdAt >= datetime('now', ${dateModifier})`;
+    let notesFilter = `WHERE c.createdAt >= datetime('now', ${dateModifier})`;
     let notesArgs: any[] = [];
     if (filterUserId) {
-        notesFilter += ` AND patientId IN (SELECT patientId FROM User_Patient WHERE userId = ?)`;
+        notesFilter += ` AND c.patientId IN (SELECT patientId FROM User_Patient WHERE userId = ?)`;
         notesArgs.push(filterUserId);
     }
 
     const alertsRes = await db.execute({
-        sql: `SELECT isAlert, COUNT(*) as count FROM CollaborativeNotes ${notesFilter} GROUP BY isAlert`,
+        sql: `SELECT isAlert, COUNT(*) as count FROM CollaborativeNotes c ${notesFilter} GROUP BY isAlert`,
         args: notesArgs
     });
 
     const alertsPerPatientRes = await db.execute({
-        sql: `SELECT u.firstName || ' ' || u.lastName as patientName, COUNT(*) as count 
-              FROM CollaborativeNotes c 
-              JOIN Patients p ON c.patientId = p.patientId 
+        sql: `SELECT u.firstName || ' ' || u.lastName as patientName, COUNT(*) as count
+              FROM CollaborativeNotes c
+              JOIN Patients p ON c.patientId = p.patientId
               JOIN Users u ON p.patientId = u.userId
-              ${notesFilter.replace('WHERE', 'AND')} AND c.isAlert = 1 
-              GROUP BY c.patientId 
+              ${notesFilter.replace('WHERE', 'AND')} AND c.isAlert = 1
+              GROUP BY c.patientId
               ORDER BY count DESC LIMIT 5`,
         args: notesArgs
     });
 
     const notesPerUserRes = await db.execute({
-        sql: `SELECT u.firstName || ' ' || u.lastName as authorName, r.roleName, COUNT(*) as count 
-              FROM CollaborativeNotes c 
-              JOIN Users u ON c.authorId = u.userId 
+        sql: `SELECT u.firstName || ' ' || u.lastName as authorName, r.roleName, COUNT(*) as count
+              FROM CollaborativeNotes c
+              JOIN Users u ON c.authorId = u.userId
               JOIN Roles r ON u.roleId = r.roleId
-              ${notesFilter.replace('WHERE', 'AND')} 
-              GROUP BY c.authorId 
+              ${notesFilter.replace('WHERE', 'AND')}
+              GROUP BY c.authorId
               ORDER BY count DESC LIMIT 5`,
         args: notesArgs
+    });
+
+    // --- 7. FISIOTERAPIA ---
+    const isFisio = roleId === ROLES.FISIOTERAPEUTA;
+    let physioFilter = `WHERE ps.sessionDate >= date('now', ${dateModifier})`;
+    let physioArgs: any[] = [];
+    // Fisioterapeuta solo ve sus propios planes; admin/doctor ven todo (o filtrado)
+    if (isFisio) {
+        physioFilter += ` AND pp.physiotherapistId = ?`;
+        physioArgs.push(user.userId);
+    } else if (filterUserId && !isAdmin) {
+        physioFilter += ` AND pp.physiotherapistId = ?`;
+        physioArgs.push(filterUserId);
+    }
+
+    const therapyTypesRes = await db.execute({
+        sql: `SELECT ps.therapyType, COUNT(*) as count
+              FROM PhysiotherapySessions ps
+              JOIN PhysiotherapyPlans pp ON ps.planId = pp.planId
+              ${physioFilter}
+              GROUP BY ps.therapyType ORDER BY count DESC LIMIT 8`,
+        args: physioArgs
+    });
+
+    const physioAdherenceRes = await db.execute({
+        sql: `SELECT
+               COUNT(*) as totalSessions,
+               SUM(CASE WHEN ps.status = 'Completada' THEN 1 ELSE 0 END) as completedSessions
+              FROM PhysiotherapySessions ps
+              JOIN PhysiotherapyPlans pp ON ps.planId = pp.planId
+              ${physioFilter}`,
+        args: physioArgs
+    });
+    const adRow = physioAdherenceRes.rows[0] as any;
+    const physioAdherence = adRow?.totalSessions > 0
+        ? Math.round((Number(adRow.completedSessions) / Number(adRow.totalSessions)) * 100)
+        : 0;
+
+    const painEvolutionRes = await db.execute({
+        sql: `SELECT strftime('%Y-%m', ps.sessionDate) as month,
+               ROUND(AVG(ps.painLevel), 1) as avgPain
+              FROM PhysiotherapySessions ps
+              JOIN PhysiotherapyPlans pp ON ps.planId = pp.planId
+              ${physioFilter} AND ps.painLevel IS NOT NULL
+              GROUP BY month ORDER BY month ASC`,
+        args: physioArgs
+    });
+
+    const physioPlansCountRes = await db.execute({
+        sql: `SELECT status, COUNT(*) as count
+              FROM PhysiotherapyPlans pp
+              ${isFisio ? 'WHERE physiotherapistId = ?' : (filterUserId && !isAdmin) ? 'WHERE physiotherapistId = ?' : 'WHERE 1=1'}
+              GROUP BY status`,
+        args: isFisio ? [user.userId] : (filterUserId && !isAdmin) ? [filterUserId] : []
     });
 
     const responseData = {
@@ -324,6 +378,12 @@ export const GET: APIRoute = async ({ request, locals }) => {
             distribution: alertsRes.rows,
             alertsPerPatient: alertsPerPatientRes.rows,
             notesPerUser: notesPerUserRes.rows
+        },
+        physiotherapy: {
+            therapyTypes: therapyTypesRes.rows,
+            adherence: physioAdherence,
+            painEvolution: painEvolutionRes.rows,
+            plansByStatus: physioPlansCountRes.rows
         }
     };
 

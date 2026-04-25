@@ -1,0 +1,226 @@
+---
+import Layout from '../../layouts/Layout.astro';
+import { ROLES, checkRole } from '../../functions/checkRole';
+import { db } from '../../turso';
+
+const user = Astro.locals.user;
+if (!checkRole(user, [ROLES.FISIOTERAPEUTA, ROLES.DOCTOR, ROLES.JEFE_MEDICO, ROLES.ADMINISTRADOR, ROLES.ESTUDIANTE, ROLES.ENTRENADOR])) {
+  return Astro.redirect('/403');
+}
+
+const roleId = Number(user?.roleId);
+const canWrite = [ROLES.FISIOTERAPEUTA, ROLES.ADMINISTRADOR, ROLES.JEFE_MEDICO].includes(roleId);
+const isAdmin = [ROLES.ADMINISTRADOR, ROLES.JEFE_MEDICO].includes(roleId);
+const isStudent = roleId === ROLES.ESTUDIANTE;
+const isCoach = roleId === ROLES.ENTRENADOR;
+
+// Si es estudiante, redirigir directo a su plan activo si existe solo uno
+if (isStudent) {
+  const myActivePlans = await db.execute({
+    sql: `SELECT planId FROM PhysiotherapyPlans WHERE patientId = ? AND status = 'Activo' LIMIT 2`,
+    args: [user?.userId ?? null]
+  });
+  if (myActivePlans.rows.length === 1) {
+    return Astro.redirect(`/physiotherapy/${myActivePlans.rows[0].planId}`);
+  }
+}
+
+// Estadísticas rápidas
+let statsQuery = `
+  SELECT
+    COUNT(*) as totalPlans,
+    SUM(CASE WHEN status = 'Activo' THEN 1 ELSE 0 END) as activePlans,
+    SUM(CASE WHEN status = 'Completado' THEN 1 ELSE 0 END) as completedPlans
+  FROM PhysiotherapyPlans
+`;
+let statsArgs: any[] = [];
+if (!isAdmin) {
+  if (isStudent) {
+    statsQuery += ` WHERE patientId = ?`;
+    statsArgs.push(user?.userId);
+  } else if (isCoach) {
+    statsQuery += ` WHERE patientId IN (SELECT patientId FROM User_Patient WHERE userId = ? AND roleType = 'Coach')`;
+    statsArgs.push(user?.userId);
+  } else {
+    statsQuery += ` WHERE physiotherapistId = ?`;
+    statsArgs.push(user?.userId);
+  }
+}
+
+const statsRes = await db.execute({ sql: statsQuery, args: statsArgs });
+const stats = statsRes.rows[0] ?? { totalPlans: 0, activePlans: 0, completedPlans: 0 };
+
+// Planes con info de paciente
+let plansQuery = `
+  SELECT pp.planId, pp.goals, pp.startDate, pp.endDate, pp.status, pp.totalSessionsPlanned,
+         u.firstName || ' ' || u.lastName as patientName,
+         ph.firstName || ' ' || ph.lastName as physioName,
+         i.injuryType, i.bodyZone,
+         (SELECT COUNT(*) FROM PhysiotherapySessions WHERE planId = pp.planId) as totalSessions,
+         (SELECT COUNT(*) FROM PhysiotherapySessions WHERE planId = pp.planId AND status = 'Completada') as completedSessions,
+         (SELECT painLevel FROM PhysiotherapySessions WHERE planId = pp.planId AND status = 'Completada' ORDER BY sessionDate DESC LIMIT 1) as lastPainLevel
+  FROM PhysiotherapyPlans pp
+  JOIN Users u ON pp.patientId = u.userId
+  JOIN Users ph ON pp.physiotherapistId = ph.userId
+  LEFT JOIN Injuries i ON pp.injuryId = i.injuryId
+`;
+
+const filterStatus = Astro.url.searchParams.get('status') || '';
+const filterQ = Astro.url.searchParams.get('q')?.trim() || '';
+
+let whereClauses: string[] = [];
+let plansArgs: any[] = [];
+
+if (!isAdmin) {
+  if (isStudent) {
+    whereClauses.push(`pp.patientId = ?`);
+    plansArgs.push(user?.userId);
+  } else if (isCoach) {
+    whereClauses.push(`pp.patientId IN (SELECT patientId FROM User_Patient WHERE userId = ? AND roleType = 'Coach')`);
+    plansArgs.push(user?.userId);
+  } else {
+    whereClauses.push(`pp.physiotherapistId = ?`);
+    plansArgs.push(user?.userId);
+  }
+}
+if (filterStatus) {
+  whereClauses.push(`pp.status = ?`);
+  plansArgs.push(filterStatus);
+}
+if (filterQ) {
+  whereClauses.push(`(u.firstName LIKE ? OR u.lastName LIKE ? OR i.injuryType LIKE ?)`);
+  plansArgs.push(`%${filterQ}%`, `%${filterQ}%`, `%${filterQ}%`);
+}
+
+if (whereClauses.length > 0) {
+  plansQuery += ` WHERE ` + whereClauses.join(' AND ');
+}
+plansQuery += ` ORDER BY pp.startDate DESC`;
+
+const plansRes = await db.execute({ sql: plansQuery, args: plansArgs });
+const plans = plansRes.rows;
+
+const statusColors: Record<string, string> = {
+  'Activo': 'bg-emerald-50 text-emerald-700 border-emerald-200',
+  'Completado': 'bg-sky-50 text-sky-700 border-sky-200',
+  'Cancelado': 'bg-slate-100 text-slate-500 border-slate-200',
+};
+
+function getPainColor(level: any) {
+  if (level === null) return 'text-slate-400';
+  const n = Number(level);
+  if (n <= 3) return 'text-emerald-600';
+  if (n <= 6) return 'text-amber-600';
+  return 'text-rose-600';
+}
+---
+
+<Layout title="Fisioterapia">
+  <div class="flex flex-col sm:flex-row justify-between items-start sm:items-center mb-8 gap-4">
+    <div>
+      <h1 class="text-3xl font-bold text-slate-800 tracking-tight">Fisioterapia</h1>
+      <p class="text-slate-500 mt-1">Gestión de planes de rehabilitación y seguimiento clínico.</p>
+    </div>
+    {canWrite && (
+      <a href="/physiotherapy/new" class="bg-gradient-to-r from-violet-500 to-purple-600 text-white font-semibold py-2.5 px-5 rounded-xl shadow-md hover:shadow-lg transition-all flex items-center gap-2">
+        <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+        Nuevo Plan
+      </a>
+    )}
+  </div>
+
+  <!-- KPIs -->
+  <div class="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-8">
+    <div class="glass-card rounded-2xl p-5 border-l-4 border-l-violet-500">
+      <p class="text-slate-500 text-xs uppercase tracking-wider font-semibold mb-1">Total Planes</p>
+      <p class="text-4xl font-extrabold text-slate-800">{stats.totalPlans}</p>
+    </div>
+    <div class="glass-card rounded-2xl p-5 border-l-4 border-l-emerald-500">
+      <p class="text-slate-500 text-xs uppercase tracking-wider font-semibold mb-1">Planes Activos</p>
+      <p class="text-4xl font-extrabold text-emerald-700">{stats.activePlans}</p>
+    </div>
+    <div class="glass-card rounded-2xl p-5 border-l-4 border-l-sky-500">
+      <p class="text-slate-500 text-xs uppercase tracking-wider font-semibold mb-1">Completados</p>
+      <p class="text-4xl font-extrabold text-sky-700">{stats.completedPlans}</p>
+    </div>
+  </div>
+
+  <!-- Filtros -->
+  <div class="glass-card rounded-2xl p-4 mb-6 border border-white/60">
+    <form method="GET" class="flex flex-wrap items-center gap-3">
+      <div class="relative flex-1 min-w-[200px]">
+        <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="absolute left-3 top-3 text-slate-400"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/></svg>
+        <input type="text" name="q" value={filterQ} placeholder="Paciente o tipo de lesión..." class="w-full bg-white/50 border border-slate-200/60 rounded-xl pl-9 pr-4 py-2 text-slate-800 focus:outline-none focus:ring-2 focus:ring-violet-500" />
+      </div>
+      <select name="status" class="bg-white/50 border border-slate-200/60 rounded-xl px-4 py-2 text-slate-700 focus:outline-none focus:ring-2 focus:ring-violet-500">
+        <option value="">Todos los estados</option>
+        <option value="Activo" selected={filterStatus === 'Activo'}>Activos</option>
+        <option value="Completado" selected={filterStatus === 'Completado'}>Completados</option>
+        <option value="Cancelado" selected={filterStatus === 'Cancelado'}>Cancelados</option>
+      </select>
+      <button type="submit" class="px-4 py-2 bg-gradient-to-r from-violet-500 to-purple-600 text-white font-medium rounded-xl shadow-sm hover:shadow-md transition-all">Filtrar</button>
+      {(filterQ || filterStatus) && <a href="/physiotherapy" class="px-4 py-2 border border-slate-200 text-slate-600 font-medium rounded-xl hover:bg-slate-50 transition-colors">Limpiar</a>}
+    </form>
+  </div>
+
+  <!-- Lista de planes -->
+  {plans.length === 0 ? (
+    <div class="glass-card rounded-2xl p-12 text-center border border-white/60">
+      <svg xmlns="http://www.w3.org/2000/svg" width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" class="mx-auto text-slate-300 mb-4"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M22 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
+      <p class="text-slate-500 font-medium">No hay planes de fisioterapia registrados.</p>
+      {canWrite && <a href="/physiotherapy/new" class="mt-4 inline-block text-violet-600 font-bold hover:underline">Crear el primer plan →</a>}
+    </div>
+  ) : (
+    <div class="grid grid-cols-1 lg:grid-cols-2 xl:grid-cols-3 gap-5">
+      {plans.map((plan: any) => {
+        const totalPlanned = Number(plan.totalSessionsPlanned) || 0;
+        const adherence = totalPlanned > 0
+          ? Math.round((Number(plan.completedSessions) / totalPlanned) * 100)
+          : 0;
+        const painColor = getPainColor(plan.lastPainLevel);
+        const planBlock = (
+          <a href={`/physiotherapy/${plan.planId}`} class="glass-card rounded-2xl p-5 border border-white/60 hover:shadow-lg hover:border-violet-200 transition-all group block">
+            <div class="flex justify-between items-start mb-3">
+              <div>
+                <p class="font-bold text-slate-800 text-base group-hover:text-violet-700 transition-colors">{plan.patientName}</p>
+                {plan.injuryType && (
+                  <p class="text-xs text-slate-500 mt-0.5">{plan.injuryType} · {plan.bodyZone}</p>
+                )}
+              </div>
+              <span class={`text-[10px] font-bold px-2.5 py-1 rounded-full border uppercase tracking-wider ${statusColors[plan.status] ?? 'bg-slate-100 text-slate-500'}`}>
+                {plan.status}
+              </span>
+            </div>
+
+            {plan.goals && (
+              <p class="text-sm text-slate-600 line-clamp-2 mb-3 italic">"{plan.goals}"</p>
+            )}
+
+            <div class="grid grid-cols-3 gap-2 mb-3">
+              <div class="bg-white/60 rounded-xl p-2 text-center">
+                <p class="text-[10px] text-slate-400 uppercase font-bold">Sesiones</p>
+                <p class="font-bold text-slate-700 text-sm">{plan.completedSessions}/{totalPlanned}</p>
+              </div>
+              <div class="bg-white/60 rounded-xl p-2 text-center">
+                <p class="text-[10px] text-slate-400 uppercase font-bold">Adherencia</p>
+                <p class={`font-bold text-sm ${adherence >= 80 ? 'text-emerald-600' : adherence >= 50 ? 'text-amber-600' : 'text-rose-600'}`}>{adherence}%</p>
+              </div>
+              <div class="bg-white/60 rounded-xl p-2 text-center">
+                <p class="text-[10px] text-slate-400 uppercase font-bold">Dolor</p>
+                <p class={`font-bold text-sm ${painColor}`}>
+                  {plan.lastPainLevel !== null ? `${plan.lastPainLevel}/10` : '—'}
+                </p>
+              </div>
+            </div>
+
+            <div class="flex justify-between items-center text-[11px] text-slate-400 font-medium">
+              <span>Inicio: {plan.startDate}</span>
+              {isAdmin && <span class="text-violet-500">Fisio: {plan.physioName}</span>}
+            </div>
+          </a>
+        );
+        return planBlock;
+      })}
+    </div>
+  )}
+</Layout>

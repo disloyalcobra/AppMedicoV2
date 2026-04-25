@@ -11,7 +11,8 @@ export const ROLES = {
   NUTRIOLOGO: 4,
   ESTUDIANTE: 5,
   STAFF: 6,
-  ENTRENADOR: 7
+  ENTRENADOR: 7,
+  FISIOTERAPEUTA: 8
 };
 
 /**

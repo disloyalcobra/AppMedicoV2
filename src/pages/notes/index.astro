@@ -4,7 +4,7 @@ import { ROLES, checkRole } from '../../functions/checkRole';
 import { db } from '../../turso';
 
 const user = Astro.locals.user;
-if (!checkRole(user, [ROLES.DOCTOR, ROLES.JEFE_MEDICO, ROLES.NUTRIOLOGO, ROLES.ENTRENADOR, ROLES.ADMINISTRADOR])) {
+if (!checkRole(user, [ROLES.DOCTOR, ROLES.JEFE_MEDICO, ROLES.NUTRIOLOGO, ROLES.ENTRENADOR, ROLES.ADMINISTRADOR, ROLES.FISIOTERAPEUTA])) {
   return Astro.redirect('/403');
 }
 
@@ -24,7 +24,7 @@ const notesQuery = await db.execute({
     WHERE 
         ? IN (1, 2) -- Admin/Jefe Medico
         OR n.authorId = ?
-        OR n.patientId IN (SELECT patientId FROM Appointments WHERE doctorId = ?)
+        OR n.patientId IN (SELECT patientId FROM User_Patient WHERE userId = ?)
     ORDER BY n.createdAt DESC
   `,
   args: [user?.roleId ?? null, user?.userId ?? null, user?.userId ?? null]

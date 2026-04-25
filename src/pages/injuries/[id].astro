@@ -4,12 +4,12 @@ import { ROLES, checkRole } from '../../functions/checkRole';
 import { db } from '../../turso';
 
 const user = Astro.locals.user;
-if (!checkRole(user, [ROLES.DOCTOR, ROLES.JEFE_MEDICO, ROLES.ADMINISTRADOR, ROLES.ENTRENADOR, ROLES.STAFF, ROLES.ESTUDIANTE])) {
+if (!checkRole(user, [ROLES.DOCTOR, ROLES.JEFE_MEDICO, ROLES.ADMINISTRADOR, ROLES.ENTRENADOR, ROLES.STAFF, ROLES.ESTUDIANTE, ROLES.FISIOTERAPEUTA])) {
   return Astro.redirect('/403');
 }
 
 const { id } = Astro.params;
-const isDoctorOrAdmin = user?.roleId === ROLES.DOCTOR || user?.roleId === ROLES.ADMINISTRADOR || user?.roleId === ROLES.JEFE_MEDICO;
+const isDoctorOrAdmin = user?.roleId === ROLES.DOCTOR || user?.roleId === ROLES.ADMINISTRADOR || user?.roleId === ROLES.JEFE_MEDICO || user?.roleId === ROLES.FISIOTERAPEUTA;
 
 const injRes = await db.execute({
     sql: `SELECT i.*, p.patientId, p.isAthlete, u.firstName, u.lastName
@@ -36,6 +36,7 @@ let requiredRoleType = "";
 if (user?.roleId === ROLES.DOCTOR) requiredRoleType = "Doctor";
 else if (user?.roleId === ROLES.NUTRIOLOGO) requiredRoleType = "Nutritionist";
 else if (user?.roleId === ROLES.ENTRENADOR) requiredRoleType = "Coach";
+else if (user?.roleId === ROLES.FISIOTERAPEUTA) requiredRoleType = "Physiotherapist";
 
 if (requiredRoleType && user) {
   const accessCheck = await db.execute({

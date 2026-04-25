@@ -54,7 +54,7 @@ const mockRes = await db.execute(`
   FROM Appointments a
   JOIN Patients p ON a.patientId = p.patientId
   JOIN Users u ON p.patientId = u.userId
-  JOIN Users ud ON a.doctorId = ud.userId
+  JOIN Users ud ON a.specialistId = ud.userId
   ORDER BY a.dateTime DESC LIMIT 4
 `);
 

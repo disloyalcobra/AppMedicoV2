@@ -10,7 +10,7 @@ import { ROLES, checkRole } from '../../functions/checkRole';
 
 // 1. SEGURIDAD: Validamos que el usuario tenga permiso para agendar.
 const user = Astro.locals.user;
-if (!checkRole(user, [ROLES.DOCTOR, ROLES.JEFE_MEDICO, ROLES.STAFF, ROLES.ADMINISTRADOR, ROLES.NUTRIOLOGO, ROLES.ESTUDIANTE])) {
+if (!checkRole(user, [ROLES.DOCTOR, ROLES.JEFE_MEDICO, ROLES.STAFF, ROLES.ADMINISTRADOR, ROLES.NUTRIOLOGO, ROLES.ESTUDIANTE, ROLES.FISIOTERAPEUTA])) {
   return Astro.redirect('/403');
 }
 ---

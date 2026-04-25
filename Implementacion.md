@@ -1,190 +1,180 @@
-🧠 PROMPT COMPLETO — IMPLEMENTACIÓN DASHBOARD + SISTEMA CLÍNICO
+⚙️ PLAN DE IMPLEMENTACIÓN — CREACIÓN DE PACIENTES SIN DUPLICADOS
+🧠 1. PRINCIPIO BASE
 
-Quiero que implementes un Dashboard Médico-Administrativo interactivo dentro de mi sistema clínico (Astro + Turso/SQLite), siguiendo buenas prácticas de rendimiento, seguridad (RBAC) y escalabilidad.
+👉 Antes de crear un paciente:
 
-El sistema ya cuenta con:
+SI existe → NO crear → vincular
+SI no existe → crear → vincular
 
-Usuarios con roles (Administrador, Doctor, Nutriólogo, Entrenador)
-Relación User_Patient (RBAC por paciente)
-Sistema de citas (Appointments)
-Disponibilidad (Doctor_Availability)
-🎯 OBJETIVO
+👉 nunca duplicar registros
 
-Construir un dashboard modular, dinámico y exportable, con:
+🔍 2. ¿CÓMO DEFINES “PACIENTE EXISTENTE”?
 
-Filtros globales (tiempo y doctor)
-Gráficos interactivos (Chart.js)
-Datos obtenidos vía API (async)
-Exportación por sección (PDF y CSV)
-Control de acceso por rol (RBAC)
-🏗️ ARQUITECTURA (IMPORTANTE)
-🔥 Backend — API UNIFICADA
+Aquí tienes 3 opciones, de mejor a peor:
 
-NO crear múltiples endpoints separados.
+🟢 OPCIÓN RECOMENDADA (más confiable)
+matricula (UNIQUE)
 
-👉 Crear UN SOLO endpoint:
+👉 ya la tienes en Users
 
-/api/reports?range=week|month|year&doctorId=ID
+🟡 OPCIÓN SECUNDARIA
+email
 
-Debe retornar:
+👉 útil si no hay matrícula
+
+🔴 OPCIÓN DÉBIL (fallback)
+firstName + lastName + dateOfBirth
+
+👉 solo como sugerencia, no como validación estricta
+
+🔧 3. BACKEND — ENDPOINT PRINCIPAL
+📌 POST /api/patients/create-or-link
+🧠 LÓGICA COMPLETA
+🟢 Paso 1: Buscar paciente existente
+SELECT userId
+FROM Users
+WHERE matricula = ?
+OR email = ?
+🟢 Paso 2A: SI EXISTE
+
+👉 NO crear nuevo
+
+👉 solo vincular:
+
+INSERT OR IGNORE INTO User_Patient (userId, patientId, roleType)
+VALUES (?, ?, ?)
+
+👉 respuesta:
 
 {
-  "general": {},
-  "clinical": {},
-  "patients": {},
-  "injuries": {},
-  "nutrition": {},
-  "alerts": {}
+  "status": "linked",
+  "patientId": 123
 }
-🔐 RBAC (CRÍTICO)
-Si el usuario es Administrador → puede ver todo
-Si es Doctor/Nutriólogo/Coach → SOLO sus pacientes
+🟢 Paso 2B: SI NO EXISTE
 
-Aplicar en TODAS las queries:
+👉 crear usuario + paciente
 
-WHERE doctorId = ? -- si no es admin
+1. Crear en Users
+INSERT INTO Users (
+  firstName,
+  lastName,
+  email,
+  password,
+  roleId,
+  matricula
+)
+VALUES (?, ?, ?, ?, ?, ?)
 
-O usando User_Patient:
+👉 roleId = Estudiante (o paciente)
 
-JOIN User_Patient up ON up.patientId = p.patientId
-WHERE up.userId = ?
-📊 MÓDULOS DEL DASHBOARD
-1. General
-KPIs (total pacientes, citas, etc.)
-Citas por estado
-Carga semanal
-2. Clinical
-Diagnósticos más comunes
-Síntomas frecuentes
-Medicamentos usados
-3. Patients
-Distribución por edad
-Género
-Alergias más comunes
-4. Injuries
-Tipos de lesiones
-Zonas del cuerpo (usar barras, NO SVG complejo)
-Severidad
-5. Nutrition
-Cumplimiento de planes
-Diagnósticos nutricionales
-6. Alerts
-Tipos de alertas
-Ranking de creadores
-⚙️ FRONTEND
-📁 Estructura
-src/pages/reports/index.astro
-src/components/reports/
+2. Crear en Patients
+INSERT INTO Patients (
+  patientId,
+  dateOfBirth,
+  gender,
+  weight,
+  height
+)
+VALUES (?, ?, ?, ?, ?)
+3. Vincular
+INSERT INTO User_Patient (userId, patientId, roleType)
+VALUES (?, ?, ?)
 
-Componentes:
+👉 respuesta:
 
-FiltersBar.astro
-GeneralVision.astro
-ClinicalModule.astro
-PatientsModule.astro
-InjuriesModule.astro
-NutritionModule.astro
-AlertsModule.astro
-🎛️ Filtros
-Rango de tiempo: semana / mes / año
-Doctor (solo visible para admin)
+{
+  "status": "created",
+  "patientId": 456
+}
+🔒 4. VALIDACIONES IMPORTANTES
+🟢 1. Evitar duplicados reales
 
-👉 Al cambiar filtros:
+Antes de insertar:
 
-hacer fetch a /api/reports
-actualizar todos los gráficos
-📊 Gráficos
+SELECT 1 FROM Users
+WHERE matricula = ?
+OR email = ?
 
-Usar:
+👉 si existe → bloquear creación
 
-npm install chart.js
+🟢 2. Validar rol que crea
 
-NO usar CDN.
+👉 permitido:
 
-Tipos:
+Doctor
+Nutriólogo
+Fisioterapeuta
+Entrenador
+Admin
+🟢 3. Auto-vinculación obligatoria
+createdBy SIEMPRE queda vinculado al paciente
+🎨 5. FRONTEND — FLUJO UX
+📌 /patients/add.astro
+🟢 Flujo recomendado
+🧩 Paso 1: Usuario escribe:
+matrícula
+nombre
+email
+🟢 Paso 2: Búsqueda automática (AJAX)
+GET /api/patients/search?q=...
+🟢 Resultado:
+✔️ SI EXISTE
 
-barras
-líneas
-pastel
-radar
-⚡ Performance
-Usar un solo request
-Implementar cache simple (30–60s)
-cacheKey = doctorId + range
-🧩 Lazy Loading (recomendado)
-Cargar módulos por tabs
-No renderizar todo al inicio
-📤 EXPORTACIÓN
-PDF
+Mostrar:
 
-Usar:
+Paciente encontrado:
+[Nombre completo]
+[Botón: Vincular a mi lista]
+❌ SI NO EXISTE
 
-html2canvas
-jsPDF
+Mostrar:
 
-Cada módulo debe tener botón:
-👉 "Descargar PDF"
+No encontrado
+[Botón: Crear nuevo paciente]
+🔥 6. UX CLAVE (esto hace la diferencia)
+🧠 NO hagas esto:
+❌ crear directo sin buscar
+❌ confiar solo en backend
+✅ SÍ haz esto:
+✔️ búsqueda previa en tiempo real
+✔️ sugerir coincidencias
+✔️ confirmar antes de crear
+🧩 7. ENDPOINT EXTRA
+📌 /api/patients/search
+SELECT u.userId, u.firstName, u.lastName
+FROM Users u
+WHERE u.matricula LIKE ?
+OR u.email LIKE ?
+OR u.firstName LIKE ?
 
-⚠️ No guardar PDFs en la base de datos
+👉 excluir ya vinculados:
 
-CSV
+AND u.userId NOT IN (
+  SELECT patientId FROM User_Patient WHERE userId = ?
+)
+🔒 8. SEGURIDAD (MUY IMPORTANTE)
+✔️ Validar siempre en backend
 
-Permitir descarga de datos tabulares:
+Aunque frontend filtre:
 
-.csv
+👉 backend debe evitar duplicados sí o sí
 
-(NO usar .xlsx por ahora)
+🚀 9. BONUS (muy recomendado)
+🧩 Índices
+CREATE INDEX idx_users_matricula ON Users(matricula);
+CREATE INDEX idx_users_email ON Users(email);
+🧩 Normalizar texto
 
+Antes de comparar:
 
-🧠 BACKEND — LÓGICA
-Query base con filtros
-filtrar por fecha
-filtrar por doctor (si aplica)
-IMPORTANTE
-Evitar múltiples queries innecesarias
-Agrupar datos con GROUP BY
-Optimizar consultas
-🔒 SEGURIDAD
+trim()
+toLowerCase()
+🧠 CONCLUSIÓN FINAL
 
-Validar SIEMPRE:
+Con este plan:
 
-rol del usuario
-acceso a pacientes
-datos filtrados correctamente
-⚠️ EVITAR
-
-❌ múltiples endpoints para reportes
-❌ usar CDN para Chart.js
-❌ guardar PDFs en DB
-❌ no aplicar RBAC
-❌ queries sin filtros
-❌ renderizar todo sin control
-
-🧪 TESTING
-
-Validar:
-
-Seguridad
-Doctor NO ve datos de otros doctores
-Admin ve todo
-Performance
-cambio de filtros < 500ms
-Funcionalidad
-gráficos actualizan correctamente
-exportación funciona
-🚀 RESULTADO ESPERADO
-
-Un dashboard:
-
-dinámico
-rápido
-seguro (RBAC)
-modular
-escalable
-listo para SaaS
-🧠 CONTEXTO FINAL
-
-Este sistema NO es un prototipo.
-
-👉 Debe quedar como:
-producto clínico real, mantenible y escalable
+✔️ evitas duplicados
+✔️ reutilizas pacientes existentes
+✔️ mantienes integridad
+✔️ mejoras UX
+✔️ mantienes coherencia con RBAC

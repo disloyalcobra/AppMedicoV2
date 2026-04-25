@@ -16,7 +16,7 @@ const ICONS = {
 const aptRes = await db.execute({
     sql: `SELECT a.dateTime, u.lastName as doctor 
           FROM Appointments a 
-          JOIN Users u ON a.doctorId = u.userId 
+          JOIN Users u ON a.specialistId = u.userId 
           WHERE a.patientId = ? AND a.status = 'Pendiente' 
           ORDER BY a.dateTime ASC LIMIT 1`,
     args: [user.userId]
@@ -62,7 +62,7 @@ const historyRes = await db.execute({
     sql: `SELECT a.dateTime as date, u.lastName as doctor, c.diagnosis as reason, a.status 
           FROM Consultations c 
           JOIN Appointments a ON c.appointmentId = a.appointmentId 
-          JOIN Users u ON a.doctorId = u.userId
+          JOIN Users u ON a.specialistId = u.userId
           WHERE a.patientId = ?
           ORDER BY a.dateTime DESC LIMIT 4`,
     args: [user.userId]

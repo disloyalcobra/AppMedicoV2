@@ -10,7 +10,7 @@ import { db } from '../../turso';
 
 // 1. SEGURIDAD: Médicos, Administradores y el propio Estudiante pueden reportar.
 const user = Astro.locals.user;
-if (!checkRole(user, [ROLES.DOCTOR, ROLES.JEFE_MEDICO, ROLES.ADMINISTRADOR, ROLES.ESTUDIANTE])) {
+if (!checkRole(user, [ROLES.DOCTOR, ROLES.JEFE_MEDICO, ROLES.ADMINISTRADOR, ROLES.ESTUDIANTE, ROLES.FISIOTERAPEUTA])) {
   return Astro.redirect('/403');
 }
 
@@ -61,9 +61,10 @@ if (Astro.request.method === 'POST') {
   const roleMap: Record<number, string> = {
     [ROLES.DOCTOR]: 'Doctor',
     [ROLES.NUTRIOLOGO]: 'Nutritionist',
-    [ROLES.ENTRENADOR]: 'Coach'
+    [ROLES.ENTRENADOR]: 'Coach',
+    [ROLES.FISIOTERAPEUTA]: 'Physiotherapist'
   };
-  const creatorRole = user?.roleId ? roleMap[user.roleId] : null;
+  const creatorRole = user?.roleId ? roleMap[Number(user.roleId)] : null;
 
   if (creatorRole && user?.userId) {
     await db.execute({

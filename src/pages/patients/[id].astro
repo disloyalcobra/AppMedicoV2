@@ -20,6 +20,7 @@ if (
     ROLES.JEFE_MEDICO,
     ROLES.NUTRIOLOGO,
     ROLES.ENTRENADOR,
+    ROLES.FISIOTERAPEUTA,
     ROLES.ADMINISTRADOR,
     ROLES.ESTUDIANTE,
   ])
@@ -29,6 +30,8 @@ if (
 
 const { id } = Astro.params;
 if (!id) return Astro.redirect("/404");
+
+const roleId = Number(user?.roleId);
 
 // 2. SEGURIDAD DE DATOS (Ownership): Un estudiante solo puede ver SU propio ID.
 if (user?.roleId === ROLES.ESTUDIANTE && String(user.userId) !== String(id)) {
@@ -40,6 +43,7 @@ let requiredRoleType = "";
 if (user?.roleId === ROLES.DOCTOR) requiredRoleType = "Doctor";
 else if (user?.roleId === ROLES.NUTRIOLOGO) requiredRoleType = "Nutritionist";
 else if (user?.roleId === ROLES.ENTRENADOR) requiredRoleType = "Coach";
+else if (user?.roleId === ROLES.FISIOTERAPEUTA) requiredRoleType = "Physiotherapist";
 
 if (requiredRoleType && user) {
   const accessCheck = await db.execute({
@@ -87,18 +91,25 @@ const patient = {
 };
 
 // B. Citas Médicas (Ordenadas por fecha descendente)
-const aptResult = await db.execute({
-  sql: `SELECT a.appointmentId as id, a.dateTime as date, u.firstName || ' ' || u.lastName as doctor, a.status
-        FROM Appointments a JOIN Users u ON a.doctorId = u.userId
-        WHERE a.patientId = ? ORDER BY a.dateTime DESC`,
-  args: [id],
-});
+let aptQuery = `SELECT a.appointmentId as id, a.dateTime as date, u.firstName || ' ' || u.lastName as doctor, a.status, a.appointmentType
+        FROM Appointments a JOIN Users u ON a.specialistId = u.userId
+        WHERE a.patientId = ?`;
+let aptArgs: any[] = [id];
+
+if (roleId === ROLES.DOCTOR || roleId === ROLES.NUTRIOLOGO || roleId === ROLES.FISIOTERAPEUTA) {
+    aptQuery += ` AND a.specialistId = ?`;
+    aptArgs.push(user?.userId);
+}
+aptQuery += ` ORDER BY a.dateTime DESC`;
+
+const aptResult = await db.execute({ sql: aptQuery, args: aptArgs });
 const appointments = aptResult.rows.map((r) => ({
   id: r.id,
   date: String(r.date),
-  doctor: "Dr. " + r.doctor,
+  doctor: (r.appointmentType === 'Nutricion' ? "Nut. " : r.appointmentType === 'Fisioterapia' ? "Fis. " : "Dr. ") + r.doctor,
   status: r.status,
   reason: "Sin motivo",
+  type: r.appointmentType
 }));
 
 // C. Consultas Médicas (Incluyendo conteo de sub-elementos vía sub-queries)
@@ -137,6 +148,7 @@ const allNotes = notesResult.rows;
 // G. Verificación de Vínculo (Seguridad de visibilidad)
 let isLinkedDoctor = false;
 let isLinkedCoach = false;
+let isLinkedPhysio = false;
 if (user?.roleId === ROLES.DOCTOR) {
   const linkRes = await db.execute({
     sql: `SELECT 1 FROM User_Patient WHERE userId = ? AND patientId = ? AND roleType = 'Doctor' LIMIT 1`,
@@ -149,11 +161,21 @@ if (user?.roleId === ROLES.DOCTOR) {
     args: [user.userId, id]
   });
   isLinkedCoach = linkRes.rows.length > 0;
+} else if (user?.roleId === ROLES.FISIOTERAPEUTA) {
+  const linkRes = await db.execute({
+    sql: `SELECT 1 FROM User_Patient WHERE userId = ? AND patientId = ? AND roleType = 'Physiotherapist' LIMIT 1`,
+    args: [user.userId, id]
+  });
+  isLinkedPhysio = linkRes.rows.length > 0;
 }
 
 // --- CONFIGURACIÓN DE PERMISOS DE INTERFAZ ---
 const isDoctorOrAdmin =
   user?.roleId === ROLES.DOCTOR ||
+  user?.roleId === ROLES.ADMINISTRADOR ||
+  user?.roleId === ROLES.JEFE_MEDICO;
+
+const isAdmin = 
   user?.roleId === ROLES.ADMINISTRADOR ||
   user?.roleId === ROLES.JEFE_MEDICO;
 
@@ -164,18 +186,28 @@ const canSeeNotes =
   user?.roleId === ROLES.JEFE_MEDICO ||
   isLinkedDoctor ||
   isLinkedCoach ||
+  isLinkedPhysio ||
   isNutritionist;
+
+const isFisioterapeuta = user?.roleId === ROLES.FISIOTERAPEUTA;
 
 let activePlanId: number | null = null;
 if (user?.roleId === ROLES.ESTUDIANTE) {
-  const planRes = await db.execute({
+  const nutPlanRes = await db.execute({
     sql: `SELECT planId FROM NutritionalPlans WHERE patientId = ? ORDER BY creationDate DESC LIMIT 1`,
     args: [id]
   });
-  if (planRes.rows.length > 0) {
-    activePlanId = Number(planRes.rows[0].planId);
+  if (nutPlanRes.rows.length > 0) {
+    activePlanId = Number(nutPlanRes.rows[0].planId);
   }
 }
+
+// J. Plan de Fisioterapia
+const physioPlanRes = await db.execute({
+  sql: `SELECT planId, status, goals FROM PhysiotherapyPlans WHERE patientId = ? AND status = 'Activo' LIMIT 1`,
+  args: [id]
+});
+const activePhysioPlan = (physioPlanRes.rows[0] as any) ?? null;
 
 // isNutritionist e isDoctorOrAdmin ya se declararon arriba junto a canSeeNotes
 
@@ -184,8 +216,27 @@ const canAddNotes =
   user?.roleId === ROLES.ADMINISTRADOR ||
   user?.roleId === ROLES.JEFE_MEDICO ||
   user?.roleId === ROLES.NUTRIOLOGO ||
-  user?.roleId === ROLES.ENTRENADOR;
-const isStudent = user?.roleId === ROLES.ESTUDIANTE;
+  user?.roleId === ROLES.ENTRENADOR ||
+  user?.roleId === ROLES.FISIOTERAPEUTA;
+const isStudent = Number(user?.roleId) === ROLES.ESTUDIANTE;
+const isOwnProfile = Number(user?.userId) === Number(id);
+const canSeePhysio = isFisioterapeuta || isAdmin || (isStudent && isOwnProfile);
+
+// Cargar planes de fisioterapia del paciente
+const physioPlansRes = await db.execute({
+  sql: `SELECT pp.planId, pp.goals, pp.startDate, pp.status,
+               ph.firstName || ' ' || ph.lastName as physioName,
+               i.injuryType, i.bodyZone,
+               (SELECT COUNT(*) FROM PhysiotherapySessions WHERE planId = pp.planId AND status = 'Completada') as completedSessions,
+               (SELECT COUNT(*) FROM PhysiotherapySessions WHERE planId = pp.planId) as totalSessions
+        FROM PhysiotherapyPlans pp
+        JOIN Users ph ON pp.physiotherapistId = ph.userId
+        LEFT JOIN Injuries i ON pp.injuryId = i.injuryId
+        WHERE pp.patientId = ?
+        ORDER BY pp.startDate DESC LIMIT 5`,
+  args: [id]
+});
+const physioPlans = physioPlansRes.rows;
 
 // --- PROCESAMIENTO DE ACCIONES (POST) ---
 if (Astro.request.method === 'POST') {
@@ -407,15 +458,15 @@ const ICONS = {
   </div>
 
   <div class="grid grid-cols-1 xl:grid-cols-2 gap-8">
-    {/* SECCIÓN CITAS: Oculta para nutriólogo, visible para otros roles */}
-    {!isNutritionist && (
+    {/* SECCIÓN CITAS: Visible para todos los roles con permisos de agenda */}
+    {(isDoctorOrAdmin || isNutritionist || isFisioterapeuta || isStudent) && (
     <div class="glass-card rounded-2xl p-6">
       <div
         class="flex items-center justify-between mb-4 border-b border-white/40 pb-4"
       >
         <h3 class="text-xl font-bold text-slate-800">Citas</h3>
         {
-          (isDoctorOrAdmin || isStudent) && (
+          (isDoctorOrAdmin || isStudent || isNutritionist || isFisioterapeuta) && (
             <a
               href={`/appointments/add?patientId=${patient.id}`}
               class="flex items-center gap-1 text-sm bg-teal-50 text-teal-700 px-3 py-1.5 rounded-lg border border-teal-200 font-semibold hover:bg-teal-500 hover:text-white transition-colors"
@@ -490,8 +541,8 @@ const ICONS = {
     </div>
     )}
 
-    {/* SECCIÓN CONSULTAS: Oculta para nutriólogo */}
-    {!isNutritionist && (
+    {/* SECCIÓN CONSULTAS: Oculta para nutriólogo y fisioterapeuta */}
+    {!isNutritionist && !isFisioterapeuta && (
     <div class="glass-card rounded-2xl p-6">
       <div
         class="flex items-center justify-between mb-4 border-b border-white/40 pb-4"
@@ -672,14 +723,15 @@ const ICONS = {
       )
     }
 
-    {/* SECCIÓN LESIONES: Visible para nutriólogo en modo solo lectura */}
+    {/* SECCIÓN LESIONES: Oculta para nutriólogo */}
+    {!isNutritionist && (
     <div class="glass-card rounded-2xl p-6">
       <div
         class="flex items-center justify-between mb-4 border-b border-white/40 pb-4"
       >
         <h3 class="text-xl font-bold text-slate-800">Lesiones</h3>
         {
-          (isDoctorOrAdmin || isStudent) && (
+          (isDoctorOrAdmin || isStudent || isFisioterapeuta) && (
             <a
               href={`/injuries/add?patientId=${patient.id}`}
               class="flex items-center gap-1 text-sm bg-teal-50 text-teal-700 px-3 py-1.5 rounded-lg border border-teal-200 font-semibold hover:bg-teal-500 hover:text-white transition-colors"
@@ -766,6 +818,7 @@ const ICONS = {
         }
       </div>
     </div>
+    )}
 
     {/* SECCIÓN NUTRICIÓN (Nutriólogo / Doctor) - Enlace rápido a perfil nutricional */}
     {isNutritionist && (
@@ -822,7 +875,51 @@ const ICONS = {
     )}
   </div>
 
-  {/* MODAL DE NOTAS Y ALERTAS */}
+    {/* SECCIÓN FISIOTERAPIA */}
+    {canSeePhysio && (
+    <div class="glass-card rounded-2xl p-6 bg-gradient-to-br from-violet-50/50 to-purple-50/50 border border-violet-100 mt-8">
+      <div class="flex items-center justify-between mb-4 border-b border-violet-100 pb-4">
+        <h3 class="text-xl font-bold text-slate-800">Fisioterapia</h3>
+        {isFisioterapeuta && (
+          <a
+            href={`/physiotherapy/new?patientId=${patient.id}`}
+            class="flex items-center gap-1 text-sm bg-violet-500 text-white px-3 py-1.5 rounded-lg font-semibold hover:bg-violet-600 transition-colors"
+          >
+            <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14"/><path d="M12 5v14"/></svg>
+            Nuevo Plan
+          </a>
+        )}
+      </div>
+      {physioPlans.length === 0 ? (
+        <p class="text-sm text-slate-500 italic">No hay planes de fisioterapia para este paciente.</p>
+      ) : (
+        <div class="space-y-3">
+          {physioPlans.map((pp: any) => {
+            const adh = Number(pp.totalSessions) > 0 ? Math.round((Number(pp.completedSessions) / Number(pp.totalSessions)) * 100) : 0;
+            const stColor = pp.status === 'Activo' ? 'bg-emerald-50 text-emerald-700 border-emerald-200' : pp.status === 'Completado' ? 'bg-sky-50 text-sky-700 border-sky-200' : 'bg-slate-100 text-slate-500 border-slate-200';
+            return (
+              <a href={`/physiotherapy/${pp.planId}`} class="block p-4 bg-white/40 rounded-xl border border-white/60 hover:border-violet-200 hover:bg-violet-50/30 transition-colors group">
+                <div class="flex justify-between items-start mb-2">
+                  <div>
+                    <p class="font-bold text-slate-800 text-sm group-hover:text-violet-700 transition-colors">{pp.physioName}</p>
+                    {pp.injuryType && <p class="text-xs text-slate-400">{pp.injuryType} · {pp.bodyZone}</p>}
+                  </div>
+                  <span class={`text-[10px] font-bold px-2 py-0.5 rounded-full border uppercase ${stColor}`}>{pp.status}</span>
+                </div>
+                <div class="flex justify-between text-xs text-slate-500">
+                  <span>Inicio: {pp.startDate}</span>
+                  <span class={adh >= 80 ? 'text-emerald-600 font-bold' : adh >= 50 ? 'text-amber-600 font-bold' : 'text-rose-600 font-bold'}>Adherencia: {adh}%</span>
+                </div>
+              </a>
+            );
+          })}
+          {!isStudent && <a href={`/physiotherapy?q=${patient.firstName}`} class="block text-center text-xs text-violet-600 font-semibold hover:underline mt-1">Ver todos los planes →</a>}
+        </div>
+      )}
+    </div>
+    )}
+
+
   <div id="noteModal" class="fixed inset-0 bg-slate-900/40 backdrop-blur-sm z-50 hidden flex items-center justify-center p-4">
     <div class="bg-white rounded-3xl shadow-2xl w-full max-w-lg overflow-hidden animate-in zoom-in-95 duration-200">
       <div class="p-6 border-b border-slate-100 flex justify-between items-center bg-slate-50">

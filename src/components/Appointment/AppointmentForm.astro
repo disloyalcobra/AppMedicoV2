@@ -12,20 +12,59 @@ interface Props {
 const { appointment } = Astro.props;
 
 // 1. CARGA DE CATÁLOGOS
-const patientsRes = await db.execute(`SELECT patientId, firstName, lastName FROM Patients JOIN Users ON Patients.patientId = Users.userId`);
+const user = Astro.locals.user;
+
+// --- FILTRADO DE PACIENTES ---
+let patientsQuery = `SELECT patientId, firstName, lastName FROM Patients JOIN Users ON Patients.patientId = Users.userId`;
+let patientsArgs: any[] = [];
+
+if (user?.roleId === ROLES.ENTRENADOR) {
+  // El entrenador solo ve sus propios estudiantes asignados
+  patientsQuery = `
+    SELECT p.patientId, u.firstName, u.lastName 
+    FROM Patients p 
+    JOIN Users u ON p.patientId = u.userId 
+    JOIN User_Patient up ON p.patientId = up.patientId
+    WHERE up.userId = ? AND up.roleType = 'Coach'
+  `;
+  patientsArgs = [user.userId];
+}
+
+const patientsRes = await db.execute({ sql: patientsQuery, args: patientsArgs });
 const patients = patientsRes.rows;
 
 const url = Astro.url;
 let lockedPatientId = url.searchParams.get('patientId');
 
-const user = Astro.locals.user;
 if (user?.roleId === ROLES.ESTUDIANTE) {
   lockedPatientId = String(user.userId);
 }
 
-// Obtenemos la lista de médicos especialistas
-const doctorsRes = await db.execute(`SELECT userId, firstName, lastName, roleName FROM Users JOIN Roles ON Users.roleId = Roles.roleId WHERE Roles.roleName IN ('Doctor', 'Jefe Médico', 'Nutriólogo')`);
+// --- FILTRADO DE ESPECIALISTAS ---
+let doctorsQuery = `
+  SELECT u.userId, u.firstName, u.lastName, r.roleName 
+  FROM Users u 
+  JOIN Roles r ON u.roleId = r.roleId 
+  WHERE r.roleName IN ('Doctor', 'Jefe Médico', 'Nutriólogo', 'Fisioterapeuta')
+`;
+
+if (user?.roleId === ROLES.ENTRENADOR) {
+  // El entrenador solo agenda con médicos
+  doctorsQuery = `
+    SELECT u.userId, u.firstName, u.lastName, r.roleName 
+    FROM Users u 
+    JOIN Roles r ON u.roleId = r.roleId 
+    WHERE r.roleName IN ('Doctor', 'Jefe Médico')
+  `;
+}
+
+const doctorsRes = await db.execute(doctorsQuery);
 const doctors = doctorsRes.rows;
+
+// Determinar si el especialista debe estar bloqueado (autoselección)
+const isClinicalRole = [ROLES.DOCTOR, ROLES.NUTRIOLOGO, ROLES.FISIOTERAPEUTA].includes(Number(user?.roleId));
+const lockedSpecialist = isClinicalRole ? doctors.find((d: any) => d.userId === user?.userId) : null;
+
 ---
 
 <div id="appointmentFormContainer" class="space-y-6">
@@ -58,12 +97,22 @@ const doctors = doctorsRes.rows;
 
         <div>
           <label for="doctorId" class="block text-sm font-semibold text-slate-700 mb-1.5 ml-1">Médico/Especialista</label>
-          <select name="doctorId" id="doctorId" class="w-full bg-white/50 border border-slate-200/60 rounded-xl px-4 py-2.5 text-slate-800 focus:outline-none focus:ring-2 focus:ring-teal-500" required>
-            <option value="">Asignar Médico</option>
-            {doctors.map((d: any) => (
-              <option value={String(d.userId)} selected={user?.userId === d.userId}>{d.firstName} {d.lastName} ({d.roleName})</option>
-            ))}
-          </select>
+          
+          {lockedSpecialist ? (
+            <>
+              <div class="w-full bg-slate-100 border border-slate-200/60 rounded-xl px-4 py-2.5 text-slate-800 font-semibold shadow-sm cursor-not-allowed">
+                {lockedSpecialist.firstName} {lockedSpecialist.lastName} ({lockedSpecialist.roleName})
+              </div>
+              <input type="hidden" name="doctorId" id="doctorId" value={String(lockedSpecialist.userId)} />
+            </>
+          ) : (
+            <select name="doctorId" id="doctorId" class="w-full bg-white/50 border border-slate-200/60 rounded-xl px-4 py-2.5 text-slate-800 focus:outline-none focus:ring-2 focus:ring-teal-500" required>
+              <option value="">Asignar Médico</option>
+              {doctors.map((d: any) => (
+                <option value={String(d.userId)} selected={user?.userId === d.userId}>{d.firstName} {d.lastName} ({d.roleName})</option>
+              ))}
+            </select>
+          )}
         </div>
 
         <div>
@@ -152,8 +201,13 @@ const doctors = doctorsRes.rows;
     }
   }
 
-  doctorSelect.addEventListener('change', updateSlots);
+  doctorSelect?.addEventListener('change', updateSlots);
   dateInput.addEventListener('change', updateSlots);
+
+  // Si el especialista está bloqueado, intentar cargar slots si hay fecha
+  if (!doctorSelect && dateInput.value) {
+    updateSlots();
+  }
 
   // Form Submission
   form.addEventListener('submit', async (e) => {
@@ -191,7 +245,7 @@ const doctors = doctorsRes.rows;
                 <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg>
                 Cita agendada exitosamente.
               </div>
-              <a href="${window.location.pathname.includes('/patients/') ? window.location.pathname : '/appointments'}" class="text-emerald-800 underline font-bold">Volver</a>
+              <a href="/appointments" class="text-emerald-800 underline font-bold">Volver</a>
             </div>
           `;
           formStatus.classList.remove('hidden');
@@ -200,14 +254,7 @@ const doctors = doctorsRes.rows;
         
         // Final redirect after delay
         setTimeout(() => {
-          const patientInput = document.getElementById('patientId');
-          const isLocked = patientInput && patientInput.tagName === 'INPUT';
-          
-          if (isLocked || window.location.pathname.includes('/patients/')) {
-             window.location.href = window.location.pathname.includes('/patients/') ? window.location.pathname : '/mi-perfil';
-          } else {
-             window.location.href = '/appointments';
-          }
+          window.location.href = '/appointments';
         }, 1500);
       } else {
         alert('Error: ' + data.error);

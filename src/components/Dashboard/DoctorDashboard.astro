@@ -19,7 +19,7 @@ const aptsFiltered = await db.execute({
   sql: `SELECT
     SUM(CASE WHEN date(dateTime) = date('now') THEN 1 ELSE 0 END) as today,
     SUM(CASE WHEN status = 'Pendiente' THEN 1 ELSE 0 END) as pending
-  FROM Appointments WHERE doctorId = ?`,
+  FROM Appointments WHERE specialistId = ?`,
   args: [user?.userId]
 });
 const aptsToday = Number(aptsFiltered.rows[0]?.today || 0);
@@ -27,7 +27,7 @@ const aptsToday = Number(aptsFiltered.rows[0]?.today || 0);
 const consFiltered = await db.execute({
   sql: `SELECT COUNT(*) as total FROM Consultations c
         JOIN Appointments a ON c.appointmentId = a.appointmentId
-        WHERE a.doctorId = ?`,
+        WHERE a.specialistId = ?`,
   args: [user?.userId]
 });
 const totalConsultations = Number(consFiltered.rows[0]?.total || 0);
@@ -39,7 +39,7 @@ const todayAptsRes = await db.execute({
         FROM Appointments a
         JOIN Patients p ON a.patientId = p.patientId
         JOIN Users u ON p.patientId = u.userId
-        WHERE a.doctorId = ? AND date(a.dateTime) = date('now')
+        WHERE a.specialistId = ? AND date(a.dateTime) = date('now')
         ORDER BY a.dateTime ASC LIMIT 5`,
   args: [user?.userId]
 });

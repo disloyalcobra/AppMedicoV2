@@ -1,0 +1,132 @@
+---
+---
+
+<div class="relative bg-white/50 rounded-3xl p-6 md:p-8" id="physioPdf">
+    <div class="flex justify-between items-center mb-8 border-b border-slate-200 pb-4">
+        <h2 class="text-2xl font-bold text-slate-800 flex items-center gap-2">
+            <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="text-violet-600"><path d="M4.5 6.375a4.125 4.125 0 1 1 8.25 0 4.125 4.125 0 0 1-8.25 0ZM14.25 8.625a3.375 3.375 0 1 1 6.75 0 3.375 3.375 0 0 1-6.75 0ZM1.5 19.125a7.125 7.125 0 0 1 14.25 0v.003l-.001.119a.75.75 0 0 1-.363.63 13.067 13.067 0 0 1-6.761 1.873c-2.472 0-4.786-.684-6.76-1.873a.75.75 0 0 1-.364-.63l-.001-.122ZM17.25 19.128l-.001.144a2.25 2.25 0 0 1-.233.96 10.088 10.088 0 0 0 5.06-1.01.75.75 0 0 0 .42-.643 4.875 4.875 0 0 0-6.957-4.611 8.586 8.586 0 0 1 1.71 5.157v.003Z"/></svg>
+            Módulo de Fisioterapia
+        </h2>
+    </div>
+
+    <!-- KPIs -->
+    <div class="grid grid-cols-2 md:grid-cols-4 gap-4 mb-8">
+        <div class="glass-card rounded-2xl p-4 text-center border-l-4 border-l-violet-500">
+            <p class="text-xs text-slate-400 uppercase font-bold mb-1">Adherencia</p>
+            <p class="text-4xl font-extrabold text-violet-700" id="physioAdherence">—</p>
+            <p class="text-xs text-slate-400 mt-1">% sesiones completadas</p>
+        </div>
+        <div class="glass-card rounded-2xl p-4 text-center border-l-4 border-l-emerald-500">
+            <p class="text-xs text-slate-400 uppercase font-bold mb-1">Planes Activos</p>
+            <p class="text-4xl font-extrabold text-emerald-700" id="physioActive">—</p>
+        </div>
+        <div class="glass-card rounded-2xl p-4 text-center border-l-4 border-l-sky-500">
+            <p class="text-xs text-slate-400 uppercase font-bold mb-1">Completados</p>
+            <p class="text-4xl font-extrabold text-sky-700" id="physioCompleted">—</p>
+        </div>
+        <div class="glass-card rounded-2xl p-4 text-center border-l-4 border-l-slate-400">
+            <p class="text-xs text-slate-400 uppercase font-bold mb-1">Cancelados</p>
+            <p class="text-4xl font-extrabold text-slate-600" id="physioCancelled">—</p>
+        </div>
+    </div>
+
+    <div class="grid grid-cols-1 lg:grid-cols-2 gap-8">
+        <!-- Tipos de terapia -->
+        <div class="glass-card rounded-2xl p-6">
+            <h3 class="font-bold text-slate-700 mb-6">Tipos de Terapia más Usados</h3>
+            <div class="relative h-64 w-full">
+                <canvas id="physioTherapyChart"></canvas>
+            </div>
+        </div>
+
+        <!-- Evolución del dolor -->
+        <div class="glass-card rounded-2xl p-6">
+            <h3 class="font-bold text-slate-700 mb-6">Evolución Promedio del Dolor (0-10)</h3>
+            <div class="relative h-64 w-full">
+                <canvas id="physioPainChart"></canvas>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script is:inline>
+    window.addEventListener('reportsDataLoaded', (e) => {
+        const data = e.detail.physiotherapy;
+        if (!data) return;
+
+        // KPIs
+        document.getElementById('physioAdherence').textContent = data.adherence + '%';
+
+        const plansByStatus = data.plansByStatus || [];
+        let active = 0, completed = 0, cancelled = 0;
+        plansByStatus.forEach(p => {
+            if (p.status === 'Activo') active = p.count;
+            else if (p.status === 'Completado') completed = p.count;
+            else if (p.status === 'Cancelado') cancelled = p.count;
+        });
+        document.getElementById('physioActive').textContent = active;
+        document.getElementById('physioCompleted').textContent = completed;
+        document.getElementById('physioCancelled').textContent = cancelled;
+
+        // Tipos de terapia
+        if (data.therapyTypes && data.therapyTypes.length > 0) {
+            const ctxT = document.getElementById('physioTherapyChart').getContext('2d');
+            if (window.physioTherapyInst) window.physioTherapyInst.destroy();
+            window.physioTherapyInst = new window.Chart(ctxT, {
+                type: 'bar',
+                data: {
+                    labels: data.therapyTypes.map(t => t.therapyType),
+                    datasets: [{
+                        label: 'Sesiones',
+                        data: data.therapyTypes.map(t => t.count),
+                        backgroundColor: [
+                            '#8b5cf6','#7c3aed','#6d28d9','#5b21b6',
+                            '#4c1d95','#a78bfa','#c4b5fd','#ddd6fe'
+                        ],
+                        borderRadius: 4
+                    }]
+                },
+                options: {
+                    indexAxis: 'y',
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    plugins: { legend: { display: false } },
+                    scales: {
+                        x: { beginAtZero: true, grid: { borderDash: [2,4], color: '#f1f5f9' }, ticks: { precision: 0 } },
+                        y: { grid: { display: false } }
+                    }
+                }
+            });
+        }
+
+        // Evolución del dolor
+        if (data.painEvolution && data.painEvolution.length > 0) {
+            const ctxP = document.getElementById('physioPainChart').getContext('2d');
+            if (window.physioPainInst) window.physioPainInst.destroy();
+            window.physioPainInst = new window.Chart(ctxP, {
+                type: 'line',
+                data: {
+                    labels: data.painEvolution.map(p => p.month),
+                    datasets: [{
+                        label: 'Dolor promedio',
+                        data: data.painEvolution.map(p => p.avgPain),
+                        borderColor: '#8b5cf6',
+                        backgroundColor: 'rgba(139,92,246,0.1)',
+                        fill: true,
+                        tension: 0.4,
+                        pointBackgroundColor: '#8b5cf6'
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    plugins: { legend: { display: false } },
+                    scales: {
+                        y: { beginAtZero: true, max: 10, grid: { borderDash: [2,4], color: '#f1f5f9' } },
+                        x: { grid: { display: false } }
+                    }
+                }
+            });
+        }
+    });
+</script>

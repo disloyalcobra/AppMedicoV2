@@ -5,7 +5,7 @@ import { ROLES } from '../../functions/checkRole';
 
 export const GET: APIRoute = async ({ request, cookies }) => {
     const user = getSession(cookies);
-    if (!user || ![ROLES.DOCTOR, ROLES.JEFE_MEDICO, ROLES.ADMINISTRADOR, ROLES.NUTRIOLOGO].includes(user.roleId)) {
+    if (!user || ![ROLES.DOCTOR, ROLES.JEFE_MEDICO, ROLES.ADMINISTRADOR, ROLES.NUTRIOLOGO, ROLES.FISIOTERAPEUTA].includes(user.roleId)) {
         return new Response(JSON.stringify({ error: 'No autorizado' }), { status: 401 });
     }
 
@@ -34,7 +34,7 @@ export const GET: APIRoute = async ({ request, cookies }) => {
 
 export const POST: APIRoute = async ({ request, cookies }) => {
     const user = getSession(cookies);
-    if (!user || ![ROLES.DOCTOR, ROLES.JEFE_MEDICO, ROLES.ADMINISTRADOR, ROLES.NUTRIOLOGO].includes(user.roleId)) {
+    if (!user || ![ROLES.DOCTOR, ROLES.JEFE_MEDICO, ROLES.ADMINISTRADOR, ROLES.NUTRIOLOGO, ROLES.FISIOTERAPEUTA].includes(user.roleId)) {
         return new Response(JSON.stringify({ error: 'No autorizado' }), { status: 401 });
     }
 

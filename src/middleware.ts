@@ -53,15 +53,15 @@ export const onRequest = defineMiddleware(async (context, next) => {
 
   // Módulo de Pacientes (Expediente General)
   if (path.startsWith('/patients')) {
-    // Nota: Aunque el Estudiante puede entrar aquí, su acceso se restringe a su propio ID en la página
-    const allowed = [ROLES.DOCTOR, ROLES.JEFE_MEDICO, ROLES.NUTRIOLOGO, ROLES.ENTRENADOR, ROLES.ESTUDIANTE];
+    // Fisioterapeuta puede ver expedientes de sus pacientes vinculados
+    const allowed = [ROLES.DOCTOR, ROLES.JEFE_MEDICO, ROLES.NUTRIOLOGO, ROLES.ENTRENADOR, ROLES.FISIOTERAPEUTA, ROLES.ESTUDIANTE];
     if (!allowed.includes(roleId)) return redirect('/?error=403');
   }
 
   // Agenda de Citas
   if (path.startsWith('/appointments')) {
-    // El Staff NO tiene acceso a la agenda según los últimos requerimientos aplicados
-    const allowed = [ROLES.DOCTOR, ROLES.JEFE_MEDICO, ROLES.NUTRIOLOGO, ROLES.ESTUDIANTE];
+    // El fisioterapeuta puede ver y agendar citas de tipo Fisioterapia
+    const allowed = [ROLES.DOCTOR, ROLES.JEFE_MEDICO, ROLES.NUTRIOLOGO, ROLES.FISIOTERAPEUTA, ROLES.ESTUDIANTE];
     if (!allowed.includes(roleId)) return redirect('/?error=403');
   }
 
@@ -73,8 +73,8 @@ export const onRequest = defineMiddleware(async (context, next) => {
 
   // Módulo de Lesiones
   if (path.startsWith('/injuries')) {
-    // Personal médico, entrenadores (vía User_Patient) y estudiantes (propias)
-    if (![ROLES.DOCTOR, ROLES.JEFE_MEDICO, ROLES.ENTRENADOR, ROLES.ESTUDIANTE].includes(roleId)) return redirect('/?error=403');
+    // El fisioterapeuta puede ver lesiones de sus pacientes (base para planes de rehab)
+    if (![ROLES.DOCTOR, ROLES.JEFE_MEDICO, ROLES.ENTRENADOR, ROLES.FISIOTERAPEUTA, ROLES.ESTUDIANTE].includes(roleId)) return redirect('/?error=403');
   }
 
   // Módulo de Nutrición especializado
@@ -83,17 +83,24 @@ export const onRequest = defineMiddleware(async (context, next) => {
     if (![ROLES.NUTRIOLOGO, ROLES.DOCTOR, ROLES.JEFE_MEDICO, ROLES.ENTRENADOR, ROLES.ESTUDIANTE].includes(roleId)) return redirect('/?error=403');
   }
 
+  // Módulo de Fisioterapia
+  if (path.startsWith('/physiotherapy')) {
+    // Fisioterapeuta (CRUD completo), Doctor, Jefe Médico, Entrenador y Estudiante (solo lectura/personal)
+    if (![ROLES.FISIOTERAPEUTA, ROLES.DOCTOR, ROLES.JEFE_MEDICO, ROLES.ENTRENADOR, ROLES.ESTUDIANTE].includes(roleId)) return redirect('/?error=403');
+  }
+
   // Notas Colaborativas y Alertas
   if (path.startsWith('/notes')) {
-    if (![ROLES.DOCTOR, ROLES.NUTRIOLOGO, ROLES.ENTRENADOR, ROLES.JEFE_MEDICO].includes(roleId)) {
+    // Fisioterapeuta puede colaborar en notas de sus pacientes
+    if (![ROLES.DOCTOR, ROLES.NUTRIOLOGO, ROLES.ENTRENADOR, ROLES.FISIOTERAPEUTA, ROLES.JEFE_MEDICO].includes(roleId)) {
       return redirect('/?error=403');
     }
   }
 
   // Reportes y Estadísticas
   if (path.startsWith('/reports')) {
-    // Administrador (vía regla global), Jefe Médico y Doctores
-    if (![ROLES.JEFE_MEDICO, ROLES.DOCTOR].includes(roleId)) {
+    // Administrador (vía regla global), Jefe Médico, Doctores, Nutriólogos, Entrenadores y Fisioterapeutas
+    if (![ROLES.JEFE_MEDICO, ROLES.DOCTOR, ROLES.NUTRIOLOGO, ROLES.ENTRENADOR, ROLES.FISIOTERAPEUTA].includes(roleId)) {
       return redirect('/?error=403');
     }
   }

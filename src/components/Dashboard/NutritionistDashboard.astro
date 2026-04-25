@@ -22,7 +22,7 @@ const plansRes = await db.execute({
 const totalPlans = Number(plansRes.rows[0].total);
 
 const aptsRes = await db.execute({
-  sql: `SELECT COUNT(*) as total FROM Appointments WHERE doctorId = ? AND date(dateTime) = date('now')`,
+  sql: `SELECT COUNT(*) as total FROM Appointments WHERE specialistId = ? AND date(dateTime) = date('now')`,
   args: [user?.userId]
 });
 const aptsToday = Number(aptsRes.rows[0].total);
@@ -34,7 +34,7 @@ const todayAptsRes = await db.execute({
         FROM Appointments a
         JOIN Patients p ON a.patientId = p.patientId
         JOIN Users u ON p.patientId = u.userId
-        WHERE a.doctorId = ? AND date(a.dateTime) = date('now')
+        WHERE a.specialistId = ? AND date(a.dateTime) = date('now')
         ORDER BY a.dateTime ASC LIMIT 5`,
   args: [user?.userId]
 });

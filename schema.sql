@@ -33,7 +33,9 @@ CREATE TABLE IF NOT EXISTS Patients (
 CREATE TABLE IF NOT EXISTS User_Patient (
   userId    INTEGER NOT NULL,
   patientId INTEGER NOT NULL,
-  roleType  TEXT NOT NULL CHECK (roleType IN ('Doctor','Nutritionist','Coach')),
+  roleType  TEXT NOT NULL CHECK (
+    roleType IN ('Doctor','Nutritionist','Coach','Physiotherapist')
+  ),
   createdAt DATETIME DEFAULT CURRENT_TIMESTAMP,
   PRIMARY KEY (userId, patientId, roleType),
   FOREIGN KEY (userId) REFERENCES Users(userId),
@@ -58,7 +60,11 @@ CREATE TABLE IF NOT EXISTS Appointments (
   patientId     INTEGER NOT NULL,  
   doctorId      INTEGER NOT NULL,  
   dateTime      DATETIME NOT NULL,  
-  
+
+  appointmentType TEXT CHECK (
+    appointmentType IN ('Medica','Nutricion','Entrenamiento','Fisioterapia')
+  ) DEFAULT 'Medica',
+
   status TEXT NOT NULL CHECK (
     status IN ('Pendiente','Confirmada','Reagendada','Cancelada','Rechazada')
   ) DEFAULT 'Pendiente',
@@ -75,16 +81,6 @@ CREATE TABLE IF NOT EXISTS Appointments (
 CREATE UNIQUE INDEX IF NOT EXISTS idx_unique_slot
 ON Appointments(doctorId, dateTime)
 WHERE status IN ('Pendiente','Confirmada');
-
--- ─── ÍNDICES DE RENDIMIENTO ─────────────────────────────────────────
-CREATE INDEX IF NOT EXISTS idx_appointments_doctor
-ON Appointments(doctorId);
-
-CREATE INDEX IF NOT EXISTS idx_appointments_patient
-ON Appointments(patientId);
-
-CREATE INDEX IF NOT EXISTS idx_appointments_date
-ON Appointments(dateTime);
 
 -- ─── MÓDULO 5: CLÍNICO ──────────────────────────────────────────────
 CREATE TABLE IF NOT EXISTS Consultations (  
@@ -159,79 +155,57 @@ CREATE TABLE IF NOT EXISTS Batches (
 );
 
 -- ─── MÓDULO 8: NUTRICIÓN ────────────────────────────────────────────
-CREATE TABLE IF NOT EXISTS NutritionalProfiles (  
-  profileId              INTEGER PRIMARY KEY AUTOINCREMENT,  
-  patientId              INTEGER NOT NULL UNIQUE, 
-  waistCircumference     DECIMAL,  
-  bodyFatPercentage      DECIMAL,  
-  physicalActivityLevel  TEXT,  
-  familyHistory          TEXT,  
-  dietaryRecall24h       TEXT,  
-  consumptionFrequency   TEXT,  
-  dietaryHabits          TEXT,  
-  mealSchedule           TEXT,  
-  waterConsumptionLiters DECIMAL,  
-  nutritionalDiagnosis   TEXT,  
-  metabolicRisk          TEXT,  
-  nutritionalObjective   TEXT,  
-  createdAt              DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,  
-  FOREIGN KEY (patientId) REFERENCES Patients(patientId)  
-);
-
-CREATE TABLE IF NOT EXISTS NutritionalPlans (  
-  planId                 INTEGER PRIMARY KEY AUTOINCREMENT,  
-  patientId              INTEGER NOT NULL,  
-  nutritionistId         INTEGER NOT NULL,  
-  caloricRequirement     INTEGER,  
-  macrosDistribution     TEXT,  
-  weeklyMenu             TEXT,   
-  equivalencesList       TEXT,  
-  generalRecommendations TEXT,  
-  pdfUrl                 TEXT,  
-  patientAccepted        INTEGER NOT NULL DEFAULT 0, 
-  creationDate           DATE NOT NULL DEFAULT CURRENT_DATE,  
-  FOREIGN KEY (patientId)      REFERENCES Patients(patientId),  
-  FOREIGN KEY (nutritionistId) REFERENCES Users(userId)  
-);
-
-CREATE TABLE IF NOT EXISTS NutritionalFollowUps (  
-  followUpId           INTEGER PRIMARY KEY AUTOINCREMENT,  
-  planId               INTEGER NOT NULL,  
-  consultationId       INTEGER NOT NULL,  
-  currentWeight        DECIMAL,  
-  currentBmi           DECIMAL,  
-  bodyMeasurements     TEXT,    
-  compliancePercentage DECIMAL,  
-  adjustmentsMade      TEXT,  
-  newGoals             TEXT,  
-  followUpDate         DATE NOT NULL,  
-  FOREIGN KEY (planId)         REFERENCES NutritionalPlans(planId),  
-  FOREIGN KEY (consultationId) REFERENCES Consultations(consultationId)  
-);
-
-CREATE TABLE IF NOT EXISTS NutritionalDischarges (  
-  dischargeId                INTEGER PRIMARY KEY AUTOINCREMENT,  
-  planId                     INTEGER NOT NULL UNIQUE, 
-  goalReached                INTEGER, 
-  targetWeightAchieved       DECIMAL,  
-  treatmentDurationDays      INTEGER,  
-  maintenanceRecommendations TEXT,  
-  dischargeReason            TEXT,    
-  dischargeDate              DATE NOT NULL,  
-  FOREIGN KEY (planId) REFERENCES NutritionalPlans(planId)  
-);
+CREATE TABLE IF NOT EXISTS NutritionalProfiles (...);
+CREATE TABLE IF NOT EXISTS NutritionalPlans (...);
+CREATE TABLE IF NOT EXISTS NutritionalFollowUps (...);
+CREATE TABLE IF NOT EXISTS NutritionalDischarges (...);
 
 -- ─── MÓDULO 9: NOTAS Y ALERTAS ──────────────────────────────────────
-CREATE TABLE IF NOT EXISTS CollaborativeNotes (  
-  noteId      INTEGER PRIMARY KEY AUTOINCREMENT,  
-  patientId   INTEGER NOT NULL,  
-  authorId    INTEGER NOT NULL,  
-  noteContent TEXT NOT NULL,  
-  isAlert     INTEGER NOT NULL DEFAULT 0, 
-  alertTags   TEXT,  
-  createdAt   DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,  
-  FOREIGN KEY (patientId) REFERENCES Patients(patientId),  
-  FOREIGN KEY (authorId)  REFERENCES Users(userId)  
+CREATE TABLE IF NOT EXISTS CollaborativeNotes (...);
+
+-- ─── MÓDULO 10: FISIOTERAPIA ────────────────────────────────────────
+CREATE TABLE IF NOT EXISTS PhysiotherapyPlans (
+  planId INTEGER PRIMARY KEY AUTOINCREMENT,
+  patientId INTEGER NOT NULL,
+  physiotherapistId INTEGER NOT NULL,
+  injuryId INTEGER NULL,
+  goals TEXT,
+  startDate DATE NOT NULL,
+  endDate DATE,
+  status TEXT NOT NULL DEFAULT 'Activo'
+         CHECK(status IN ('Activo','Completado','Cancelado')),
+  createdBy INTEGER,
+  createdAt DATETIME DEFAULT CURRENT_TIMESTAMP,
+  FOREIGN KEY (patientId) REFERENCES Patients(patientId),
+  FOREIGN KEY (physiotherapistId) REFERENCES Users(userId),
+  FOREIGN KEY (injuryId) REFERENCES Injuries(injuryId)
+);
+
+CREATE TABLE IF NOT EXISTS PhysiotherapySessions (
+  sessionId INTEGER PRIMARY KEY AUTOINCREMENT,
+  planId INTEGER NOT NULL,
+  appointmentId INTEGER NULL,
+  sessionDate DATE NOT NULL,
+  therapyType TEXT NOT NULL,
+  durationMinutes INTEGER NOT NULL,
+  painLevel INTEGER CHECK(painLevel BETWEEN 0 AND 10),
+  rangeOfMotion TEXT,
+  strengthLevel TEXT,
+  progressNotes TEXT,
+  status TEXT NOT NULL DEFAULT 'Programada'
+         CHECK(status IN ('Programada','Completada','Cancelada')),
+  createdAt DATETIME DEFAULT CURRENT_TIMESTAMP,
+  FOREIGN KEY (planId) REFERENCES PhysiotherapyPlans(planId),
+  FOREIGN KEY (appointmentId) REFERENCES Appointments(appointmentId)
+);
+
+CREATE TABLE IF NOT EXISTS PhysiotherapyDischarges (
+  dischargeId INTEGER PRIMARY KEY AUTOINCREMENT,
+  planId INTEGER NOT NULL UNIQUE,
+  dischargeDate DATE NOT NULL,
+  outcome TEXT,
+  recommendations TEXT,
+  FOREIGN KEY (planId) REFERENCES PhysiotherapyPlans(planId)
 );
 
 -- ─── ROLES INICIALES ────────────────────────────────────────────────
@@ -242,4 +216,5 @@ INSERT INTO Roles (roleName) VALUES
   ('Nutriólogo'),  
   ('Estudiante'),  
   ('Staff'),  
-  ('Entrenador');
+  ('Entrenador'),  
+  ('Fisioterapeuta');

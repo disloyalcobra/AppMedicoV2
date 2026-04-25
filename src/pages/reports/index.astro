@@ -7,11 +7,12 @@ import PatientsModule from '../../components/reports/PatientsModule.astro';
 import InjuriesModule from '../../components/reports/InjuriesModule.astro';
 import NutritionModule from '../../components/reports/NutritionModule.astro';
 import AlertsModule from '../../components/reports/AlertsModule.astro';
+import PhysiotherapyModule from '../../components/reports/PhysiotherapyModule.astro';
 import { ROLES, checkRole } from '../../functions/checkRole';
 import { db } from '../../turso';
 
 const user = Astro.locals.user;
-if (!user || !checkRole(user, [ROLES.ADMINISTRADOR, ROLES.JEFE_MEDICO, ROLES.DOCTOR, ROLES.NUTRIOLOGO, ROLES.ENTRENADOR])) {
+if (!user || !checkRole(user, [ROLES.ADMINISTRADOR, ROLES.JEFE_MEDICO, ROLES.DOCTOR, ROLES.NUTRIOLOGO, ROLES.ENTRENADOR, ROLES.FISIOTERAPEUTA])) {
   return Astro.redirect('/403');
 }
 
@@ -19,6 +20,7 @@ const isAdmin = user.roleId === ROLES.ADMINISTRADOR || user.roleId === ROLES.JEF
 const isDoctor = user.roleId === ROLES.DOCTOR;
 const isNutriciologo = user.roleId === ROLES.NUTRIOLOGO;
 const isEntrenador = user.roleId === ROLES.ENTRENADOR;
+const isFisioterapeuta = user.roleId === ROLES.FISIOTERAPEUTA;
 
 // Si es admin, cargar la lista de doctores para el filtro
 let doctors: any[] = [];
@@ -39,7 +41,8 @@ const visibleModules = {
     patients: true,
     injuries: isEntrenador || isAdmin || isDoctor,
     nutrition: isNutriciologo || isAdmin,
-    alerts: true
+    alerts: true,
+    physiotherapy: isFisioterapeuta || isAdmin
 };
 
 const visibleModulesJSON = JSON.stringify(visibleModules);
@@ -61,7 +64,7 @@ const visibleModulesJSON = JSON.stringify(visibleModules);
   </div>
 
   <!-- Contenedor Principal (Oculto mientras carga) -->
-  <div id="reportsContent" class="space-y-8 hidden opacity-0 transition-opacity duration-500">
+  <div id="reportsContent" class="space-y-8 hidden">
 
       <!-- Navegación por Tabs (Lazy loading visual) -->
       <div id="tabsNav" class="flex overflow-x-auto gap-2 pb-2 scrollbar-hide border-b border-slate-200">
@@ -71,6 +74,7 @@ const visibleModulesJSON = JSON.stringify(visibleModules);
           <button class="tab-btn px-4 py-2 rounded-t-lg font-semibold text-sm text-slate-500 hover:text-slate-700 hover:bg-slate-50" data-target="tab-injuries">Lesiones</button>
           <button class="tab-btn px-4 py-2 rounded-t-lg font-semibold text-sm text-slate-500 hover:text-slate-700 hover:bg-slate-50" data-target="tab-nutrition">Nutrición</button>
           <button class="tab-btn px-4 py-2 rounded-t-lg font-semibold text-sm text-slate-500 hover:text-slate-700 hover:bg-slate-50" data-target="tab-alerts">Alertas y Notas</button>
+          <button class="tab-btn px-4 py-2 rounded-t-lg font-semibold text-sm text-slate-500 hover:text-slate-700 hover:bg-slate-50" data-target="tab-physiotherapy">Fisioterapia</button>
       </div>
 
       <div id="tab-general" class="tab-content block animate-fade-in"><GeneralVision /></div>
@@ -79,6 +83,7 @@ const visibleModulesJSON = JSON.stringify(visibleModules);
       <div id="tab-injuries" class="tab-content hidden"><InjuriesModule /></div>
       <div id="tab-nutrition" class="tab-content hidden"><NutritionModule /></div>
       <div id="tab-alerts" class="tab-content hidden"><AlertsModule /></div>
+      <div id="tab-physiotherapy" class="tab-content hidden"><PhysiotherapyModule /></div>
   </div>
 
 </Layout>
@@ -90,20 +95,21 @@ const visibleModulesJSON = JSON.stringify(visibleModules);
 <script>
   import Chart from 'chart.js/auto';
 
-  // Exponer Chart globalmente para los modulos
+  // Exponer Chart globalmente para los módulos
   (window as any).Chart = Chart;
 
-  document.addEventListener('DOMContentLoaded', () => {
-
+  const initReports = () => {
     // Ocultar tabs según el rol
     const tabsNav = document.getElementById('tabsNav');
     const vModules = (window as any).visibleModules || {};
     if (tabsNav) {
+      // Limpiar tabs removidos en visitas anteriores no aplica (full reload), pero
+      // nos aseguramos de no duplicar handlers usando cloneNode trick o flag
       const tabs = tabsNav.querySelectorAll('.tab-btn');
       tabs.forEach(tab => {
         const target = tab.getAttribute('data-target')?.replace('tab-', '');
         if (target && !vModules[target]) {
-          tab.remove();
+          (tab as HTMLElement).style.display = 'none';
         }
       });
     }
@@ -111,72 +117,76 @@ const visibleModulesJSON = JSON.stringify(visibleModules);
     // Tab Navigation Logic
     const tabs = document.querySelectorAll('.tab-btn');
     const contents = document.querySelectorAll('.tab-content');
-    
+
     tabs.forEach(tab => {
-        tab.addEventListener('click', () => {
-            tabs.forEach(t => {
-                t.classList.remove('active', 'text-teal-700', 'border-b-2', 'border-teal-600', 'bg-teal-50');
-                t.classList.add('text-slate-500');
-            });
-            contents.forEach(c => c.classList.add('hidden', 'animate-fade-in'));
-            
-            tab.classList.remove('text-slate-500');
-            tab.classList.add('active', 'text-teal-700', 'border-b-2', 'border-teal-600', 'bg-teal-50');
-            
-            const targetId = tab.getAttribute('data-target');
-            document.getElementById(targetId || '')?.classList.remove('hidden');
+      tab.addEventListener('click', () => {
+        tabs.forEach(t => {
+          t.classList.remove('active', 'text-teal-700', 'border-b-2', 'border-teal-600', 'bg-teal-50');
+          t.classList.add('text-slate-500');
         });
+        contents.forEach(c => c.classList.add('hidden'));
+
+        tab.classList.remove('text-slate-500');
+        tab.classList.add('active', 'text-teal-700', 'border-b-2', 'border-teal-600', 'bg-teal-50');
+
+        const targetId = tab.getAttribute('data-target');
+        document.getElementById(targetId || '')?.classList.remove('hidden');
+      });
     });
 
     // Core Fetch Logic
     const filterRange = document.getElementById('filterRange') as HTMLSelectElement;
     const filterDoctor = document.getElementById('filterDoctor') as HTMLSelectElement;
-    let currentData: any = null;
 
     const fetchReports = async () => {
-        const loader = document.getElementById('reportsLoader');
-        const content = document.getElementById('reportsContent');
-        if(!loader || !content) return;
-        
-        content.classList.add('opacity-0');
-        setTimeout(() => content.classList.add('hidden'), 300);
-        loader.classList.remove('hidden');
+      const loader = document.getElementById('reportsLoader');
+      const content = document.getElementById('reportsContent');
+      if (!loader || !content) return;
 
-        try {
-            const range = filterRange?.value || 'month';
-            const doctorId = filterDoctor?.value || '';
-            
-            const response = await fetch(`/api/reports?range=${range}&doctorId=${doctorId}`);
-            
-            if (!response.ok) {
-                throw new Error("Error en la respuesta del servidor");
-            }
-            
-            currentData = await response.json();
-            
-            // Disparar evento global para que los componentes dibujen sus gráficos
-            const event = new CustomEvent('reportsDataLoaded', { detail: currentData });
-            window.dispatchEvent(event);
-            
-            setTimeout(() => {
-                loader.classList.add('hidden');
-                content.classList.remove('hidden');
-                // Trigger reflow
-                void content.offsetWidth;
-                content.classList.remove('opacity-0');
-            }, 100);
-        } catch (error) {
-            console.error('Error fetching reports:', error);
-            loader.innerHTML = '<p class="text-rose-500 font-bold">Error al cargar datos. Intente nuevamente.</p>';
-        }
+      // Mostrar loader sin ocultar el contenido completamente para evitar parpadeo
+      loader.classList.remove('hidden');
+      content.classList.add('opacity-50');
+
+      try {
+        const range = filterRange?.value || 'month';
+        const doctorId = filterDoctor?.value || '';
+
+        const response = await fetch(`/api/reports?range=${range}&doctorId=${doctorId}`);
+        if (!response.ok) throw new Error('Error en la respuesta del servidor');
+
+        const data = await response.json();
+
+        // Mostrar contenido antes de disparar el evento, garantizando que los
+        // canvases existen en el DOM cuando Chart.js intente pintarlos
+        loader.classList.add('hidden');
+        content.classList.remove('hidden', 'opacity-0', 'opacity-50');
+        void content.offsetWidth; // forzar reflow
+
+        // Disparar en el siguiente frame para que Chart.js encuentre los canvases ya visibles
+        requestAnimationFrame(() => {
+          const event = new CustomEvent('reportsDataLoaded', { detail: data });
+          window.dispatchEvent(event);
+        });
+
+      } catch (error) {
+        console.error('Error fetching reports:', error);
+        loader.innerHTML = '<p class="text-rose-500 font-bold">Error al cargar datos. Intente nuevamente.</p>';
+        content.classList.remove('opacity-50');
+      }
     };
 
     filterRange?.addEventListener('change', fetchReports);
     filterDoctor?.addEventListener('change', fetchReports);
 
-    // Initial Fetch
+    // Fetch inicial
     fetchReports();
+  };
 
-
-  });
+  // Usar DOMContentLoaded en primera carga
+  if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', initReports);
+  } else {
+    // Si el DOM ya está listo (e.g. navegación con bfcache o HMR)
+    initReports();
+  }
 </script>

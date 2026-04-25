@@ -4,7 +4,7 @@ import { ROLES, checkRole } from '../../functions/checkRole';
 import { db } from '../../turso';
 
 const user = Astro.locals.user;
-if (!checkRole(user, [ROLES.DOCTOR, ROLES.JEFE_MEDICO, ROLES.ADMINISTRADOR, ROLES.NUTRIOLOGO])) {
+if (!checkRole(user, [ROLES.DOCTOR, ROLES.JEFE_MEDICO, ROLES.ADMINISTRADOR, ROLES.NUTRIOLOGO, ROLES.FISIOTERAPEUTA])) {
   return Astro.redirect('/403');
 }
 
@@ -36,8 +36,8 @@ const currentAvailability = res.rows;
 let doctors: any[] = [];
 if (isAdmin) {
   const docRes = await db.execute({
-    sql: `SELECT u.userId, u.firstName, u.lastName FROM Users u WHERE u.roleId IN (?, ?, ?)`,
-    args: [ROLES.DOCTOR, ROLES.JEFE_MEDICO, ROLES.NUTRIOLOGO]
+    sql: `SELECT u.userId, u.firstName, u.lastName FROM Users u WHERE u.roleId IN (?, ?, ?, ?)`,
+    args: [ROLES.DOCTOR, ROLES.JEFE_MEDICO, ROLES.NUTRIOLOGO, ROLES.FISIOTERAPEUTA]
   });
   doctors = docRes.rows;
 }

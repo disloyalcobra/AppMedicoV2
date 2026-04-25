@@ -5,10 +5,10 @@ import { ROLES, checkRole } from '../../functions/checkRole';
 import { db } from '../../turso';
 
 const user = Astro.locals.user;
-if (!checkRole(user, [ROLES.DOCTOR, ROLES.JEFE_MEDICO, ROLES.ADMINISTRADOR, ROLES.ENTRENADOR])) {
+if (!checkRole(user, [ROLES.DOCTOR, ROLES.JEFE_MEDICO, ROLES.ADMINISTRADOR, ROLES.NUTRIOLOGO, ROLES.ENTRENADOR, ROLES.FISIOTERAPEUTA])) {
   return Astro.redirect('/403');
 }
-const canEdit = [ROLES.DOCTOR, ROLES.JEFE_MEDICO, ROLES.ADMINISTRADOR].includes(user?.roleId as number);
+const canEdit = [ROLES.DOCTOR, ROLES.JEFE_MEDICO, ROLES.ADMINISTRADOR, ROLES.FISIOTERAPEUTA].includes(Number(user?.roleId));
 
 // Base query
 let query = `
@@ -26,9 +26,10 @@ let queryArgs: any[] = [];
 const roleMap: Record<number, string> = {
   [ROLES.DOCTOR]: 'Doctor',
   [ROLES.NUTRIOLOGO]: 'Nutritionist',
-  [ROLES.ENTRENADOR]: 'Coach'
+  [ROLES.ENTRENADOR]: 'Coach',
+  [ROLES.FISIOTERAPEUTA]: 'Physiotherapist'
 };
-const roleType = user?.roleId ? roleMap[user.roleId] : undefined;
+const roleType = user?.roleId ? roleMap[Number(user.roleId)] : undefined;
 
 // Búsqueda
 const q = Astro.url.searchParams.get('q')?.trim() || '';
