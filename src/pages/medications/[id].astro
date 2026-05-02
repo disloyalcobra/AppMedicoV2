@@ -8,6 +8,8 @@ if (!checkRole(user, [ROLES.DOCTOR, ROLES.JEFE_MEDICO, ROLES.ADMINISTRADOR, ROLE
   return Astro.redirect('/403');
 }
 
+const canEdit = [ROLES.STAFF, ROLES.ADMINISTRADOR, ROLES.JEFE_MEDICO].includes(Number(user?.roleId));
+
 const { id } = Astro.params;
 if (!id) return Astro.redirect('/404');
 
@@ -24,7 +26,7 @@ if (medRes.rows.length === 0) {
 const med = medRes.rows[0];
 let success = false;
 
-if (Astro.request.method === 'POST') {
+if (Astro.request.method === 'POST' && canEdit) {
     const data = await Astro.request.formData();
     const brandName = data.get('brandName') as string;
     const activeIngredient = data.get('activeIngredient') as string;
@@ -59,7 +61,7 @@ if (Astro.request.method === 'POST') {
         <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m15 18-6-6 6-6"/></svg>
         Volver a Inventario
       </a>
-      <h1 class="text-3xl font-bold text-slate-800 tracking-tight">Editar Medicamento</h1>
+      <h1 class="text-3xl font-bold text-slate-800 tracking-tight">{canEdit ? 'Editar Medicamento' : 'Detalles del Medicamento'}</h1>
       <p class="text-slate-500 mt-1">ID #{String(med.medicationId).padStart(4, '0')}</p>
     </div>
   </div>
@@ -78,38 +80,42 @@ if (Astro.request.method === 'POST') {
     <div class="space-y-6">
       <div>
         <label class="block text-sm font-semibold text-slate-700 mb-1.5 ml-1">Nombre Comercial</label>
-        <input type="text" name="brandName" value={med.brandName as any} required class="w-full bg-white/50 border border-slate-200/60 rounded-xl px-4 py-3 text-slate-800 focus:outline-none focus:ring-2 focus:ring-teal-500 shadow-sm"/>
+        <input type="text" name="brandName" value={med.brandName as any} required disabled={!canEdit} class="w-full bg-white/50 border border-slate-200/60 rounded-xl px-4 py-3 text-slate-800 focus:outline-none focus:ring-2 focus:ring-teal-500 shadow-sm disabled:opacity-70 disabled:cursor-not-allowed"/>
       </div>
       
       <div>
         <label class="block text-sm font-semibold text-slate-700 mb-1.5 ml-1">Ingrediente Activo</label>
-        <input type="text" name="activeIngredient" value={med.activeIngredient as any} required class="w-full bg-white/50 border border-slate-200/60 rounded-xl px-4 py-3 text-slate-800 focus:outline-none focus:ring-2 focus:ring-teal-500 shadow-sm"/>
+        <input type="text" name="activeIngredient" value={med.activeIngredient as any} required disabled={!canEdit} class="w-full bg-white/50 border border-slate-200/60 rounded-xl px-4 py-3 text-slate-800 focus:outline-none focus:ring-2 focus:ring-teal-500 shadow-sm disabled:opacity-70 disabled:cursor-not-allowed"/>
       </div>
       
       <div>
         <label class="block text-sm font-semibold text-slate-700 mb-1.5 ml-1">Presentación (Ej: Tabletas 500mg, Jarabe 120ml)</label>
-        <input type="text" name="presentation" value={med.presentation as any} required class="w-full bg-white/50 border border-slate-200/60 rounded-xl px-4 py-3 text-slate-800 focus:outline-none focus:ring-2 focus:ring-teal-500 shadow-sm"/>
+        <input type="text" name="presentation" value={med.presentation as any} required disabled={!canEdit} class="w-full bg-white/50 border border-slate-200/60 rounded-xl px-4 py-3 text-slate-800 focus:outline-none focus:ring-2 focus:ring-teal-500 shadow-sm disabled:opacity-70 disabled:cursor-not-allowed"/>
       </div>
       
       <div class="grid grid-cols-2 gap-6">
         <div>
           <label class="block text-sm font-semibold text-slate-700 mb-1.5 ml-1">Stock Actual (Unidades)</label>
-          <input type="number" min="0" name="currentStock" value={med.currentStock as any} required class="w-full bg-white/50 border border-slate-200/60 rounded-xl px-4 py-3 text-slate-800 font-bold focus:outline-none focus:ring-2 focus:ring-teal-500 shadow-sm"/>
+          <input type="number" min="0" name="currentStock" value={med.currentStock as any} required disabled={!canEdit} class="w-full bg-white/50 border border-slate-200/60 rounded-xl px-4 py-3 text-slate-800 font-bold focus:outline-none focus:ring-2 focus:ring-teal-500 shadow-sm disabled:opacity-70 disabled:cursor-not-allowed"/>
         </div>
         
         <div>
           <label class="block text-sm font-semibold text-slate-700 mb-1.5 ml-1">Punto de Reorden (Alerta Mínima)</label>
-          <input type="number" min="0" name="reorderPoint" value={med.reorderPoint as any} required class="w-full bg-white/50 border border-slate-200/60 rounded-xl px-4 py-3 text-slate-800 focus:outline-none focus:ring-2 focus:ring-amber-500 shadow-sm"/>
+          <input type="number" min="0" name="reorderPoint" value={med.reorderPoint as any} required disabled={!canEdit} class="w-full bg-white/50 border border-slate-200/60 rounded-xl px-4 py-3 text-slate-800 focus:outline-none focus:ring-2 focus:ring-amber-500 shadow-sm disabled:opacity-70 disabled:cursor-not-allowed"/>
           <p class="text-[10px] text-slate-500 mt-1 ml-1 leading-tight">Si el stock cae de este número, se genera alerta.</p>
         </div>
       </div>
     </div>
     
     <div class="mt-8 pt-6 border-t border-slate-200/60 flex justify-end gap-3">
-      <a href="/medications" class="px-6 py-3 rounded-xl border border-slate-200 text-slate-600 font-semibold hover:bg-slate-50 transition-colors">Cancelar</a>
-      <button type="submit" class="px-6 py-3 bg-gradient-to-r from-teal-500 to-emerald-500 text-white font-semibold rounded-xl shadow-md hover:shadow-lg transition-all active:scale-[0.98]">
-        Actualizar Medicamento
-      </button>
+      <a href="/medications" class="px-6 py-3 rounded-xl border border-slate-200 text-slate-600 font-semibold hover:bg-slate-50 transition-colors">
+        {canEdit ? 'Cancelar' : 'Volver'}
+      </a>
+      {canEdit && (
+        <button type="submit" class="px-6 py-3 bg-gradient-to-r from-teal-500 to-emerald-500 text-white font-semibold rounded-xl shadow-md hover:shadow-lg transition-all active:scale-[0.98]">
+          Actualizar Medicamento
+        </button>
+      )}
     </div>
   </form>
 </Layout>

@@ -5,7 +5,7 @@ import { db } from '../../turso';
 import { ROLES, checkRole } from '../../functions/checkRole';
 
 const user = Astro.locals.user;
-if (!checkRole(user, [ROLES.DOCTOR, ROLES.STAFF, ROLES.ADMINISTRADOR])) {
+if (!checkRole(user, [ROLES.STAFF, ROLES.ADMINISTRADOR])) {
   return Astro.redirect('/403');
 }
 

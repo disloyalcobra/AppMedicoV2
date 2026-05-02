@@ -4,6 +4,7 @@ import { db } from "../turso";
 import bcrypt from "bcryptjs";
 
 let error = "";
+const success = Astro.url.searchParams.get("success");
 
 if (Astro.request.method === "POST") {
   try {
@@ -79,7 +80,11 @@ if (Astro.locals.user) {
     <div
       class="w-24 h-24 flex items-center justify-center mx-auto mb-4 drop-shadow-xl transition-transform hover:scale-105"
     >
-      <img src="/logo.png" alt="MediMAD Logo" class="w-full h-full object-contain" />
+      <img
+        src="/logo.png"
+        alt="MediMAD Logo"
+        class="w-full h-full object-contain"
+      />
     </div>
 
     <h1
@@ -113,6 +118,31 @@ if (Astro.locals.user) {
             </>
           </svg>
           {error}
+        </div>
+      )
+    }
+
+    {
+      success === "activated" && (
+        <div class="bg-emerald-50 border border-emerald-200 text-emerald-700 px-4 py-3 rounded-lg text-sm mb-6 animate-fade-in shadow-sm flex items-center gap-2 font-medium">
+          <svg
+            xmlns="http://www.w3.org/2000/svg"
+            width="16"
+            height="16"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            stroke-width="2"
+            stroke-linecap="round"
+            stroke-linejoin="round"
+            class="text-emerald-500"
+          >
+            <>
+              <path d="M22 11.08V12a10 10 0 1 1-5.93-9.14" />
+              <polyline points="22 4 12 14.01 9 11.01" />
+            </>
+          </svg>
+          ¡Cuenta activada! Ya puedes iniciar sesión.
         </div>
       )
     }
@@ -208,14 +238,28 @@ if (Astro.locals.user) {
       </button>
     </form>
 
-    <div class="mt-8 pt-6 border-t border-slate-200/60 text-center">
-      <p class="text-sm text-slate-500 mb-2">¿Eres alumno de nuevo ingreso?</p>
-      <a
-        href="/register-student"
-        class="inline-block text-teal-600 font-bold hover:text-teal-700 transition-colors py-2 px-4 rounded-xl border border-teal-100 hover:bg-teal-50"
-      >
-        Registrarme como Alumno
-      </a>
+    <div class="mt-8 pt-6 border-t border-slate-200/60 text-center space-y-4">
+      <div>
+        <p class="text-sm text-slate-500 mb-2">
+          ¿Eres alumno de nuevo ingreso?
+        </p>
+        <a
+          href="/register-student"
+          class="inline-block text-teal-600 font-bold hover:text-teal-700 transition-colors py-2 px-4 rounded-xl border border-teal-100 hover:bg-teal-50 text-sm"
+        >
+          Registrarme como Alumno
+        </a>
+      </div>
+      <div class="pt-2">
+        <a
+          href="/auth/activate"
+          class="text-xs text-slate-400 hover:text-teal-600 font-medium transition-colors"
+        >
+          ¿Es tu primera vez aquí? <span class="underline"
+            >Activa tu cuenta</span
+          >
+        </a>
+      </div>
     </div>
   </div>
 </AuthLayout>

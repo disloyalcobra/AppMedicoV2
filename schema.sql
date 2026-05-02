@@ -29,6 +29,15 @@ CREATE TABLE IF NOT EXISTS Patients (
   FOREIGN KEY (patientId) REFERENCES Users(userId)  
 );
 
+CREATE TABLE IF NOT EXISTS EmergencyContacts (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  patientId INTEGER,
+  name TEXT NOT NULL,
+  phone TEXT NOT NULL,
+  relationship TEXT,
+  FOREIGN KEY (patientId) REFERENCES Patients(patientId)
+);
+
 -- 🔥 RELACIÓN UNIFICADA RBAC
 CREATE TABLE IF NOT EXISTS User_Patient (
   userId    INTEGER NOT NULL,

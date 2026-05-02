@@ -1,0 +1,163 @@
+---
+import AuthLayout from "../../layouts/AuthLayout.astro";
+import { db } from "../../turso";
+import bcrypt from "bcryptjs";
+
+let error = "";
+let step = 1; // 1: Email, 2: New Password
+let email = "";
+let userId: number | null = null;
+let userName = "";
+
+if (Astro.request.method === "POST") {
+  const data = await Astro.request.formData();
+  const action = data.get("_action")?.toString();
+
+  if (action === "verifyEmail") {
+    email = data.get("email")?.toString() || "";
+    if (email) {
+      const userRes = await db.execute({
+        sql: `SELECT userId, firstName, lastName, password FROM Users WHERE email = ? LIMIT 1`,
+        args: [email],
+      });
+
+      if (userRes.rows.length === 0) {
+        error = "No encontramos ninguna cuenta con ese correo electrónico.";
+      } else {
+        const u = userRes.rows[0];
+        // Check if password is null or empty
+        if (u.password && u.password !== "") {
+          error = "Esta cuenta ya tiene una contraseña establecida. Por favor inicia sesión normalmente.";
+        } else {
+          step = 2;
+          userId = Number(u.userId);
+          userName = `${u.firstName} ${u.lastName}`;
+          email = email; // Persist email for next step
+        }
+      }
+    } else {
+      error = "Por favor ingresa tu correo electrónico.";
+    }
+  } else if (action === "setPassword") {
+    userId = Number(data.get("userId"));
+    email = data.get("email")?.toString() || "";
+    const password = data.get("password")?.toString();
+    const confirmPassword = data.get("confirmPassword")?.toString();
+
+    if (password && confirmPassword) {
+      if (password !== confirmPassword) {
+        error = "Las contraseñas no coinciden.";
+        step = 2; // Stay on step 2
+      } else if (password.length < 6) {
+        error = "La contraseña debe tener al menos 6 caracteres.";
+        step = 2;
+      } else {
+        try {
+          const hashedPassword = await bcrypt.hash(password, 10);
+          await db.execute({
+            sql: `UPDATE Users SET password = ? WHERE userId = ?`,
+            args: [hashedPassword, userId],
+          });
+          return Astro.redirect("/login?success=activated");
+        } catch (e) {
+          error = "Error al guardar la contraseña. Reintenta.";
+          step = 2;
+        }
+      }
+    } else {
+      error = "Por favor completa todos los campos.";
+      step = 2;
+    }
+  }
+}
+---
+
+<AuthLayout title="Activar Cuenta">
+  <div class="glass-strong rounded-2xl p-8 shadow-2xl w-full max-w-md animate-scale-in">
+    <div class="w-20 h-20 flex items-center justify-center mx-auto mb-4 bg-teal-50 rounded-full border border-teal-100 shadow-inner">
+      <svg xmlns="http://www.w3.org/2000/svg" width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="text-teal-600"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10"/><path d="m9 12 2 2 4-4"/></svg>
+    </div>
+
+    <h1 class="text-2xl font-bold text-center text-slate-800 mb-2 tracking-tight">
+      {step === 1 ? 'Activar tu Cuenta' : 'Establecer Contraseña'}
+    </h1>
+    <p class="text-center text-slate-500 mb-6 text-sm">
+      {step === 1 
+        ? 'Si eres un nuevo paciente registrado por tu médico, ingresa tu correo para comenzar.' 
+        : `Hola ${userName}, define una contraseña para acceder a tu expediente.`}
+    </p>
+
+    {error && (
+      <div class="bg-rose-50 border border-rose-200 text-rose-600 px-4 py-3 rounded-lg text-sm mb-6 animate-fade-in flex items-center gap-2">
+        <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="flex-shrink-0"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
+        {error}
+      </div>
+    )}
+
+    {step === 1 && (
+      <form method="POST" class="space-y-4">
+        <input type="hidden" name="_action" value="verifyEmail" />
+        <div>
+          <label for="email" class="block text-sm font-semibold text-slate-700 mb-1.5 ml-1">Correo Electrónico</label>
+          <input
+            type="email"
+            id="email"
+            name="email"
+            required
+            value={email}
+            placeholder="tu@correo.com"
+            class="w-full bg-white/80 border border-slate-200/60 rounded-xl px-4 py-2.5 text-slate-800 focus:outline-none focus:ring-2 focus:ring-teal-500 shadow-sm"
+          />
+        </div>
+        <button
+          type="submit"
+          class="w-full py-3 bg-teal-600 text-white font-bold rounded-xl shadow-md hover:bg-teal-700 transition-all active:scale-[0.98]"
+        >
+          Verificar Cuenta
+        </button>
+        <div class="text-center pt-2">
+          <a href="/login" class="text-xs text-slate-400 hover:text-teal-600 font-medium underline">Volver al Login</a>
+        </div>
+      </form>
+    )}
+
+    {step === 2 && (
+      <form method="POST" class="space-y-4">
+        <input type="hidden" name="_action" value="setPassword" />
+        <input type="hidden" name="userId" value={userId} />
+        <input type="hidden" name="email" value={email} />
+        
+        <div>
+          <label for="password" class="block text-sm font-semibold text-slate-700 mb-1.5 ml-1">Nueva Contraseña</label>
+          <input
+            type="password"
+            id="password"
+            name="password"
+            required
+            placeholder="••••••••"
+            class="w-full bg-white/80 border border-slate-200/60 rounded-xl px-4 py-2.5 text-slate-800 focus:outline-none focus:ring-2 focus:ring-teal-500 shadow-sm"
+          />
+        </div>
+
+        <div>
+          <label for="confirmPassword" class="block text-sm font-semibold text-slate-700 mb-1.5 ml-1">Confirmar Contraseña</label>
+          <input
+            type="password"
+            id="confirmPassword"
+            name="confirmPassword"
+            required
+            placeholder="••••••••"
+            class="w-full bg-white/80 border border-slate-200/60 rounded-xl px-4 py-2.5 text-slate-800 focus:outline-none focus:ring-2 focus:ring-teal-500 shadow-sm"
+          />
+        </div>
+
+        <button
+          type="submit"
+          class="w-full py-3 bg-gradient-to-r from-teal-600 to-emerald-600 text-white font-bold rounded-xl shadow-lg hover:shadow-teal-500/20 transition-all active:scale-[0.98]"
+        >
+          Activar y Entrar
+        </button>
+      </form>
+    )}
+  </div>
+</AuthLayout>

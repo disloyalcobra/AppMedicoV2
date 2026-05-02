@@ -47,6 +47,9 @@ let args: any[] = [startDateStr, endDateStr];
 if (user?.roleId === ROLES.DOCTOR || user?.roleId === ROLES.NUTRIOLOGO || user?.roleId === ROLES.FISIOTERAPEUTA) {
     query += ` AND a.specialistId = ?`;
     args.push(user.userId);
+} else if (user?.roleId === ROLES.ESTUDIANTE) {
+    query += ` AND a.patientId = ?`;
+    args.push(user.userId);
 }
 
 query += ` ORDER BY a.dateTime ASC`;

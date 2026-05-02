@@ -67,7 +67,13 @@ const lockedSpecialist = isClinicalRole ? doctors.find((d: any) => d.userId === 
 
 ---
 
-<div id="appointmentFormContainer" class="space-y-6">
+<div 
+  id="appointmentFormContainer" 
+  class="space-y-6"
+  data-user-role={user?.roleId}
+  data-student-role={ROLES.ESTUDIANTE}
+  data-user-id={user?.userId}
+>
   <div id="formStatus" class="hidden"></div>
 
   <form id="appointmentForm" class="space-y-6">
@@ -144,6 +150,11 @@ const lockedSpecialist = isClinicalRole ? doctors.find((d: any) => d.userId === 
 </div>
 
 <script>
+  const container = document.getElementById('appointmentFormContainer');
+  const USER_ROLE_ID = Number(container?.dataset.userRole);
+  const ESTUDIANTE_ROLE = Number(container?.dataset.studentRole);
+  const CURRENT_USER_ID = container?.dataset.userId;
+
   const form = document.getElementById('appointmentForm') as HTMLFormElement;
   const doctorSelect = document.getElementById('doctorId') as HTMLSelectElement;
   const dateInput = document.getElementById('dateInput') as HTMLInputElement;
@@ -217,6 +228,10 @@ const lockedSpecialist = isClinicalRole ? doctors.find((d: any) => d.userId === 
     const date = formData.get('date');
     const time = formData.get('time');
     const dateTime = `${date} ${time}:00`;
+    
+    // Check if user is student for redirect
+    const isStudent = USER_ROLE_ID === ESTUDIANTE_ROLE;
+    const redirectUrl = isStudent ? `/patients/${CURRENT_USER_ID}` : '/appointments';
 
     const payload = {
       doctorId: formData.get('doctorId'),
@@ -245,7 +260,7 @@ const lockedSpecialist = isClinicalRole ? doctors.find((d: any) => d.userId === 
                 <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg>
                 Cita agendada exitosamente.
               </div>
-              <a href="/appointments" class="text-emerald-800 underline font-bold">Volver</a>
+              <a href={redirectUrl} class="text-emerald-800 underline font-bold">Volver</a>
             </div>
           `;
           formStatus.classList.remove('hidden');
@@ -254,7 +269,7 @@ const lockedSpecialist = isClinicalRole ? doctors.find((d: any) => d.userId === 
         
         // Final redirect after delay
         setTimeout(() => {
-          window.location.href = '/appointments';
+          window.location.href = redirectUrl;
         }, 1500);
       } else {
         alert('Error: ' + data.error);

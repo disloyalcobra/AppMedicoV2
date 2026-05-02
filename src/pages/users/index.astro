@@ -4,9 +4,44 @@ import { ROLES, checkRole } from '../../functions/checkRole';
 import { db } from '../../turso';
 
 const user = Astro.locals.user;
-if (!checkRole(user, [ROLES.ADMINISTRADOR, ROLES.JEFE_MEDICO])) {
+if (!checkRole(user, [ROLES.ADMINISTRADOR, ROLES.JEFE_MEDICO, ROLES.DOCTOR])) {
   return Astro.redirect('/403');
 }
+
+const isDoctor = user?.roleId === ROLES.DOCTOR;
+
+// --- ACCIONES POST ---
+if (Astro.request.method === 'POST') {
+  const formData = await Astro.request.formData();
+  const action = formData.get('_action');
+  const targetUserId = formData.get('userId') as string;
+
+  if (action === 'clearPassword') {
+    // 1. Validar que el usuario a resetear existe
+    const targetRes = await db.execute({
+      sql: `SELECT roleId FROM Users WHERE userId = ?`,
+      args: [targetUserId]
+    });
+
+    if (targetRes.rows.length > 0) {
+      const targetRole = Number(targetRes.rows[0].roleId);
+      
+      // 2. Regla de negocio: Los doctores solo resetean a pacientes (Estudiantes) o Staff
+      // Evitar que reseteen a Admins o Jefes Médicos
+      const canReset = !isDoctor || (targetRole !== ROLES.ADMINISTRADOR && targetRole !== ROLES.JEFE_MEDICO);
+
+      if (canReset) {
+        await db.execute({
+          sql: `UPDATE Users SET password = NULL WHERE userId = ?`,
+          args: [targetUserId]
+        });
+        return Astro.redirect('/users?success=cleared');
+      }
+    }
+  }
+}
+
+const success = Astro.url.searchParams.get('success');
 
 // Map Roles
 const roleNames: Record<number, string> = {
@@ -49,13 +84,22 @@ const usersList = usersRes.rows;
     <div>
       <h1 class="text-3xl font-bold text-slate-800 tracking-tight">Directorio del Personal</h1>
       <p class="text-slate-500 mt-1">Gestión global de accesos y roles (Doctores, Entrenadores, Staff)</p>
+      
+      {success === 'cleared' && (
+        <div class="mt-4 p-3 bg-emerald-50 border border-emerald-200 text-emerald-700 rounded-xl text-xs font-bold flex items-center gap-2 animate-in fade-in slide-in-from-top-2">
+           <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10"/><path d="m9 12 2 2 4-4"/></svg>
+           CONTRASEÑA ELIMINADA. El usuario ya puede activar su cuenta desde el login.
+        </div>
+      )}
     </div>
     
     <div class="flex gap-3">
-        <a href="/users/add" class="bg-gradient-to-r from-teal-500 to-emerald-500 text-white font-medium py-2.5 px-4 rounded-xl shadow-md hover:shadow-lg transition-all flex items-center gap-2">
-            <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
-            Nuevo Usuario
-        </a>
+        {!isDoctor && (
+          <a href="/users/add" class="bg-gradient-to-r from-teal-500 to-emerald-500 text-white font-medium py-2.5 px-4 rounded-xl shadow-md hover:shadow-lg transition-all flex items-center gap-2">
+              <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+              Nuevo Usuario
+          </a>
+        )}
     </div>
   </div>
 
@@ -117,9 +161,22 @@ const usersList = usersRes.rows;
               <td class="p-4 text-right">
                  {u.userId !== user?.userId && (
                     <div class="flex items-center justify-end gap-2">
-                        <a href={`/users/${u.userId}`} class="w-8 h-8 rounded-lg bg-white border border-slate-200 flex items-center justify-center text-slate-400 hover:text-teal-600 hover:border-teal-300 transition-colors shadow-sm" title="Editar">
-                            <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20h9"/><path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4Z"/></svg>
-                        </a>
+                        {/* Botón Reiniciar Contraseña (Solo para roles permitidos) */}
+                        {(!isDoctor || (u.roleId !== ROLES.ADMINISTRADOR && u.roleId !== ROLES.JEFE_MEDICO)) && (
+                          <form method="POST" class="inline" onsubmit="return confirm('¿Estás seguro de eliminar la contraseña de este usuario? Tendrá que activarla de nuevo desde el login.');">
+                            <input type="hidden" name="_action" value="clearPassword" />
+                            <input type="hidden" name="userId" value={u.userId} />
+                            <button type="submit" class="w-8 h-8 rounded-lg bg-rose-50 border border-rose-100 flex items-center justify-center text-rose-400 hover:text-rose-600 hover:border-rose-200 transition-colors shadow-sm" title="Eliminar Contraseña">
+                                <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect width="18" height="11" x="3" y="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/><path d="m15 15-6 6"/><path d="m9 15 6 6"/></svg>
+                            </button>
+                          </form>
+                        )}
+
+                        {!isDoctor && (
+                          <a href={`/users/${u.userId}`} class="w-8 h-8 rounded-lg bg-white border border-slate-200 flex items-center justify-center text-slate-400 hover:text-teal-600 hover:border-teal-300 transition-colors shadow-sm" title="Editar">
+                              <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20h9"/><path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4Z"/></svg>
+                          </a>
+                        )}
                     </div>
                  )}
               </td>
